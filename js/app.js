@@ -152,6 +152,17 @@ function preencherBarraLembretes(data){
       html += `<div class="item-lembrete"><div class="titulo">${escapeHtml(c.nome)}</div><div class="detalhe">${c.dias_restantes === 0 ? 'fecha hoje' : 'fecha em ' + c.dias_restantes + ' dia(s)'}</div></div>`;
     }
   }
+  html += '<h3>Prazo de anexo (12 dias)</h3>';
+  if (!data.prazos_anexo || !data.prazos_anexo.length){
+    html += '<div class="vazio">Nenhum protocolo perto do prazo.</div>';
+  }else{
+    for (const p of data.prazos_anexo){
+      const detalhe = p.dias_restantes < 0
+        ? `vencido há ${Math.abs(p.dias_restantes)} dia(s)`
+        : (p.dias_restantes === 0 ? 'vence hoje' : `vence em ${p.dias_restantes} dia(s)`);
+      html += `<div class="item-lembrete"><div class="titulo">${escapeHtml(p.prestador_nome)}</div><div class="detalhe">${escapeHtml(p.convenio_nome)} · ${p.tipo} · protocolo ${escapeHtml(p.protocolo)} — ${detalhe}</div></div>`;
+    }
+  }
   html += '<h3>Mais pendências</h3>';
   if (!data.ranking_pendencias.length){
     html += '<div class="vazio">Nada pendente.</div>';
@@ -405,13 +416,13 @@ async function renderConteudoTipo(idx){
 
     html += `
       <div class="linha-form" style="margin-top:16px;">
+        <div class="campo"><label>Status</label>
+          <select id="np-status-${idx}">${Object.entries(ROTULOS_STATUS).map(([v, l]) => `<option value="${v}" ${v === 'enviado_falta_anexo' ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        </div>
         <div class="campo"><label>Protocolo</label><input type="text" id="np-protocolo-${idx}"></div>
         <div class="campo"><label>Data</label><input type="date" id="np-data-${idx}"></div>
         <div class="campo"><label>Qtd. guias</label><input type="number" min="1" id="np-guias-${idx}" style="width:80px;"></div>
         <div class="campo"><label>Valor (R$)</label><input type="text" inputmode="numeric" id="np-valor-${idx}"></div>
-        <div class="campo"><label>Status</label>
-          <select id="np-status-${idx}">${Object.entries(ROTULOS_STATUS).map(([v, l]) => `<option value="${v}" ${v === 'enviado_falta_anexo' ? 'selected' : ''}>${l}</option>`).join('')}</select>
-        </div>
       </div>
       <div class="campo" id="np-obs-wrap-${idx}" hidden style="margin-bottom:10px;max-width:400px;">
         <label>Observação desse protocolo</label>

@@ -1,10 +1,17 @@
 const { sql, ensureSchema, permitirCors } = require('./_db.js');
 const { usuarioDaSessao, escopoDoUsuario } = require('./_auth.js');
-const { hojeBrasilISO, competenciaAtual } = require('./_data.js');
+const { hojeBrasilISO, dataBrasilISO, competenciaAtual } = require('./_data.js');
 const { listarLinhas } = require('./_faturamentos.js');
 
 const DIAS_ALERTA_PRAZO = 5;
 const MAX_RANKING_PENDENCIAS = 8;
+const PRAZO_ANEXO_DIAS = 12;
+
+// Diferença em dias de calendário entre duas datas ISO (YYYY-MM-DD) --
+// meio-dia UTC pra não sofrer com fuso/horário de verão na conta.
+function diasEntre(dataInicioISO, dataFimISO){
+  return Math.round((new Date(dataFimISO + 'T12:00:00Z') - new Date(dataInicioISO + 'T12:00:00Z')) / 86400000);
+}
 
 // Alertas e indicadores da competência atual: prazos de fechamento
 // chegando perto, lançamentos ainda sem "faturado" e o ranking de
@@ -73,10 +80,43 @@ module.exports = async (req, res) => {
       protocolosFaturadosMes = protocolosFaturadosMes.filter(r => prestadoresNoEscopo.has(r.prestador_id));
     }
 
+    // Prazo de 12 dias que a operadora dá pra resolver o anexo depois de
+    // enviar o protocolo -- conta a partir da data informada no protocolo
+    // (ou de quando foi criado, se a data não foi preenchida). Mostra os
+    // que estão perto de vencer (ou já vencidos) pra virar alerta.
+    let protocolosFaltaAnexo = await db`
+      SELECT p.protocolo, p.data, p.criado_em, f.prestador_id, f.convenio_id, f.tipo,
+             pr.nome AS prestador_nome, c.nome AS convenio_nome
+      FROM faturamentos_protocolos p
+      JOIN faturamentos f ON f.id = p.faturamento_id
+      JOIN prestadores pr ON pr.id = f.prestador_id
+      JOIN convenios c ON c.id = f.convenio_id
+      WHERE p.status = 'enviado_falta_anexo'
+    `;
+    if (escopo !== null){
+      const prestadoresNoEscopo = new Set(escopo.map(e => e.prestador_id));
+      protocolosFaltaAnexo = protocolosFaltaAnexo.filter(p => prestadoresNoEscopo.has(p.prestador_id));
+    }
+    const prazosAnexo = protocolosFaltaAnexo
+      .map(p => {
+        const dataBase = dataBrasilISO(p.data || p.criado_em);
+        const diasRestantes = PRAZO_ANEXO_DIAS - diasEntre(dataBase, hoje);
+        return {
+          prestador_nome: p.prestador_nome,
+          convenio_nome: p.convenio_nome,
+          tipo: p.tipo,
+          protocolo: p.protocolo,
+          dias_restantes: diasRestantes,
+        };
+      })
+      .filter(p => p.dias_restantes <= DIAS_ALERTA_PRAZO)
+      .sort((a, b) => a.dias_restantes - b.dias_restantes);
+
     res.status(200).json({
       competencia,
       competencia_atual: competenciaReal,
       prazos_proximos: prazosProximos,
+      prazos_anexo: prazosAnexo,
       faturamentos: linhas,
       total_pendentes: pendentes.length,
       ranking_pendencias: rankingPendencias,
