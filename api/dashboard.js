@@ -25,11 +25,19 @@ module.exports = async (req, res) => {
     const convenioId = req.query && req.query.convenio_id ? Number(req.query.convenio_id) : null;
     const prestadorId = req.query && req.query.prestador_id ? Number(req.query.prestador_id) : null;
 
-    let convenios = await db`SELECT * FROM convenios WHERE ativo = true AND prazo_dia IS NOT NULL`;
+    // Consolidado numa chamada só (em vez de 3 separadas: dashboard,
+    // convenios, prestadores) pra reduzir o número de conexões frias
+    // simultâneas logo na abertura da tela.
+    let todosConvenios = await db`SELECT * FROM convenios WHERE ativo = true ORDER BY nome`;
+    let todosPrestadores = await db`SELECT * FROM prestadores WHERE ativo = true ORDER BY nome`;
     if (escopo !== null){
-      const conveniosNoEscopo = new Set(escopo.map(e => e.convenio_id));
-      convenios = convenios.filter(c => conveniosNoEscopo.has(c.id));
+      const conveniosDoEscopo = new Set(escopo.map(e => e.convenio_id));
+      const prestadoresDoEscopo = new Set(escopo.map(e => e.prestador_id));
+      todosConvenios = todosConvenios.filter(c => conveniosDoEscopo.has(c.id));
+      todosPrestadores = todosPrestadores.filter(p => prestadoresDoEscopo.has(p.id));
     }
+
+    const convenios = todosConvenios.filter(c => c.prazo_dia != null);
     const prazosProximos = convenios
       .map(c => ({ ...c, dias_restantes: c.prazo_dia - diaHoje }))
       .filter(c => c.dias_restantes >= 0 && c.dias_restantes <= DIAS_ALERTA_PRAZO)
@@ -73,6 +81,8 @@ module.exports = async (req, res) => {
       total_pendentes: pendentes.length,
       ranking_pendencias: rankingPendencias,
       protocolos_faturados_mes: Object.fromEntries(protocolosFaturadosMes.map(r => [r.prestador_id, Number(r.quantidade)])),
+      convenios: todosConvenios,
+      prestadores: todosPrestadores,
     });
   }catch(err){
     console.error('dashboard error', err);

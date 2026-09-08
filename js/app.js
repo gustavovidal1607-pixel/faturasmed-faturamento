@@ -214,12 +214,8 @@ async function renderPainel(){
   const cont = document.getElementById('conteudo');
   cont.innerHTML = '<div class="vazio">Carregando...</div>';
   painelFiltro = { competencia: competenciaAtualBrasil(), convenio_id: '', prestador_id: '' };
+  painelSubaba = 'pendente';
   try{
-    [painelConvenios, painelPrestadores] = await Promise.all([
-      api('/convenios').then(d => d.convenios).catch(() => []),
-      api('/prestadores').then(d => d.prestadores).catch(() => []),
-    ]);
-    painelSubaba = 'pendente';
     await buscarPainel();
   }catch(err){ cont.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
 }
@@ -228,7 +224,11 @@ async function buscarPainel(){
   const params = new URLSearchParams({ competencia: painelFiltro.competencia });
   if (painelFiltro.convenio_id) params.set('convenio_id', painelFiltro.convenio_id);
   if (painelFiltro.prestador_id) params.set('prestador_id', painelFiltro.prestador_id);
+  // Uma chamada só (convênios e prestadores vêm junto), em vez de três
+  // requisições separadas competindo por conexões frias na abertura da tela.
   painelDados = await api('/dashboard?' + params.toString());
+  painelConvenios = painelDados.convenios;
+  painelPrestadores = painelDados.prestadores;
   preencherBarraLembretes(painelDados);
   montarPainel();
 }
