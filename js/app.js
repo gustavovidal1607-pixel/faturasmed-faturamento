@@ -986,6 +986,21 @@ let atividadesCharts = [];
 
 const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
+let chartJsPromise = null;
+function carregarChartJs(){
+  if (window.Chart) return Promise.resolve();
+  if (!chartJsPromise){
+    chartJsPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js';
+      script.onload = () => resolve();
+      script.onerror = () => { chartJsPromise = null; reject(new Error('Não foi possível carregar a biblioteca de gráficos (verifique a conexão).')); };
+      document.head.appendChild(script);
+    });
+  }
+  return chartJsPromise;
+}
+
 async function renderAtividades(){
   const cont = document.getElementById('conteudo');
   const anoAtual = Number(hojeBrasilAno());
@@ -1051,24 +1066,31 @@ async function carregarAtividades(){
     `;
     }).join('');
 
-    for (const u of data.usuarios){
-      const porMesCompleto = new Map(totaisPorMes);
-      for (const m of u.por_mes) porMesCompleto.set(m.mes.slice(5, 7), m.total);
-      const ctx = document.getElementById(`grafico-${u.usuario_id}`);
-      const chart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: MESES_ABREV,
-          datasets: [{ label: 'Ações', data: [...porMesCompleto.values()], backgroundColor: '#1D4FC4', borderRadius: 4 }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
-        },
-      });
-      atividadesCharts.push(chart);
+    try{
+      await carregarChartJs();
+      for (const u of data.usuarios){
+        const porMesCompleto = new Map(totaisPorMes);
+        for (const m of u.por_mes) porMesCompleto.set(m.mes.slice(5, 7), m.total);
+        const ctx = document.getElementById(`grafico-${u.usuario_id}`);
+        const chart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: MESES_ABREV,
+            datasets: [{ label: 'Ações', data: [...porMesCompleto.values()], backgroundColor: '#1D4FC4', borderRadius: 4 }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+          },
+        });
+        atividadesCharts.push(chart);
+      }
+    }catch(erroGrafico){
+      // Dados e detalhe por mês continuam visíveis mesmo se o gráfico
+      // (biblioteca externa) não carregar por algum bloqueio de rede.
+      document.querySelectorAll('[id^="grafico-"]').forEach(c => { c.outerHTML = `<div class="vazio">${escapeHtml(erroGrafico.message)}</div>`; });
     }
   }catch(err){ alvo.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
 }
