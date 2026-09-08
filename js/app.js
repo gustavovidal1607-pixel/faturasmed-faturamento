@@ -369,14 +369,13 @@ function renderPainelLinhas(){
   });
 }
 
-async function renderConteudoTipo(idx, filtro){
+async function renderConteudoTipo(idx){
   const linha = painelLinhasCache[idx];
   const alvo = document.getElementById(`tipo-conteudo-${idx}`);
   if (!linha || !alvo) return;
-  // Sem filtro explícito (primeira vez que abre), usa o período global
-  // do filtro principal -- assim não precisa configurar De/Até um a um
-  // em cada prestador.
-  filtro = filtro || { de: painelFiltro.data_de || null, ate: painelFiltro.data_ate || null };
+  // O período vem do filtro global "Protocolos de/até" no topo da tela --
+  // sem controle duplicado aqui dentro de cada card.
+  const filtro = { de: painelFiltro.data_de || null, ate: painelFiltro.data_ate || null };
   alvo.innerHTML = '<div class="vazio">Carregando...</div>';
   try{
     const params = new URLSearchParams({ convenio_id: linha.convenio_id, prestador_id: linha.prestador_id, tipo: linha.tipo });
@@ -385,14 +384,7 @@ async function renderConteudoTipo(idx, filtro){
     const { protocolos } = await api('/protocolos?' + params.toString());
     const total = protocolos.reduce((soma, p) => soma + (p.valor != null ? Number(p.valor) : 0), 0);
 
-    let html = `
-      <p class="subtitulo" style="margin:0 0 10px;">Histórico completo desse prestador+tipo, em qualquer competência.</p>
-      <div class="linha-form">
-        <div class="campo"><label>De</label><input type="date" id="pf-de-${idx}" value="${filtro.de || ''}"></div>
-        <div class="campo"><label>Até</label><input type="date" id="pf-ate-${idx}" value="${filtro.ate || ''}"></div>
-        <button class="btn secundario pequeno" id="pf-filtrar-${idx}">Filtrar</button>
-      </div>
-    `;
+    let html = '<p class="subtitulo" style="margin:0 0 10px;">Histórico completo desse prestador+tipo.</p>';
     if (protocolos.length){
       html += '<table><thead><tr><th>Protocolo</th><th>Competência</th><th>Data</th><th>Guias</th><th>Valor</th><th>Status</th><th></th></tr></thead><tbody>';
       for (const p of protocolos){
@@ -432,13 +424,6 @@ async function renderConteudoTipo(idx, filtro){
 
     alvo.innerHTML = html;
 
-    document.getElementById(`pf-filtrar-${idx}`).addEventListener('click', () => {
-      renderConteudoTipo(idx, {
-        de: document.getElementById(`pf-de-${idx}`).value || null,
-        ate: document.getElementById(`pf-ate-${idx}`).value || null,
-      });
-    });
-
     document.getElementById(`np-toggle-obs-${idx}`).addEventListener('click', () => {
       document.getElementById(`np-obs-wrap-${idx}`).hidden = false;
       document.getElementById(`np-toggle-obs-${idx}`).hidden = true;
@@ -447,14 +432,14 @@ async function renderConteudoTipo(idx, filtro){
     alvo.querySelectorAll('[data-status-protocolo]').forEach(sel => sel.addEventListener('change', async () => {
       try{
         await api(`/protocolos?id=${sel.dataset.statusProtocolo}`, { method: 'PATCH', body: JSON.stringify({ status: sel.value }) });
-        await renderConteudoTipo(idx, filtro);
+        await renderConteudoTipo(idx);
         await atualizarContextoAposMudanca(idx);
       }catch(err){ alert(err.message); }
     }));
     alvo.querySelectorAll('[data-remover-protocolo]').forEach(btn => btn.addEventListener('click', async () => {
       if (!confirm('Remover esse protocolo?')) return;
       await api(`/protocolos?id=${btn.dataset.removerProtocolo}`, { method: 'DELETE' });
-      await renderConteudoTipo(idx, filtro);
+      await renderConteudoTipo(idx);
       await atualizarContextoAposMudanca(idx);
     }));
     document.getElementById(`np-adicionar-${idx}`).addEventListener('click', async () => {
@@ -477,7 +462,7 @@ async function renderConteudoTipo(idx, filtro){
           observacao: document.getElementById(`np-observacao-${idx}`).value.trim() || null,
         }) });
         linha.faturamento_id = resposta.faturamento_id;
-        await renderConteudoTipo(idx, filtro);
+        await renderConteudoTipo(idx);
         await atualizarContextoAposMudanca(idx);
       }catch(err){ erroEl.textContent = err.message; }
     });
