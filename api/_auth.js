@@ -12,7 +12,7 @@ async function usuarioDaSessao(req){
   if (!token) return null;
   const db = sql();
   const rows = await db`
-    SELECT u.id, u.login, u.nome, u.papel, u.ativo
+    SELECT u.id, u.login, u.nome, u.cargo, u.ativo
     FROM sessoes s
     JOIN usuarios u ON u.id = s.usuario_id
     WHERE s.token = ${token} AND s.expira_em > now()
@@ -25,7 +25,7 @@ async function usuarioDaSessao(req){
 }
 
 function ehAdmin(usuario){
-  return !!usuario && usuario.papel === 'administrador';
+  return !!usuario && usuario.cargo === 'administrador';
 }
 
 // Pares (prestador_id, convenio_id) que o usuário pode ver/lançar.

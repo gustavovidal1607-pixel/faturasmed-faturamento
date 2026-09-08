@@ -1,7 +1,7 @@
 :root{
-  --navy: #16324F;
-  --teal: #17BEBB;
-  --blue: #2E6FF2;
+  --navy: #1D4FC4;
+  --teal: #1FE0AD;
+  --blue: #1D4FC4;
   --bg: #F5F7FA;
   --card: #FFFFFF;
   --text: #1F2937;
@@ -41,12 +41,14 @@ body{
   box-shadow: 0 4px 24px rgba(22,50,79,0.08);
   text-align: center;
 }
-.login-caixa .logo{
-  font-size: 22px;
-  font-weight: 800;
-  margin-bottom: 4px;
+.logo-img{
+  height: 32px;
+  display: block;
 }
-.login-caixa .logo span{ color: var(--teal); }
+.logo-img-login{
+  height: 56px;
+  margin: 0 auto 4px;
+}
 .login-caixa .tagline{
   color: var(--muted);
   font-size: 12px;
@@ -81,13 +83,6 @@ header.topo{
   height: 60px;
   gap: 24px;
 }
-header.topo .logo{
-  font-weight: 800;
-  font-size: 18px;
-  white-space: nowrap;
-  color: var(--navy);
-}
-header.topo .logo span{ color: var(--teal); }
 nav.abas{
   display: flex;
   gap: 4px;

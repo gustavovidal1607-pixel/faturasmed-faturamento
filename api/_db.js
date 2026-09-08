@@ -21,10 +21,23 @@ async function ensureSchema(){
       nome TEXT NOT NULL,
       salt VARCHAR(64) NOT NULL,
       hash VARCHAR(256) NOT NULL,
-      papel VARCHAR(20) NOT NULL CHECK (papel IN ('funcionario','administrador')),
+      cargo VARCHAR(20) NOT NULL CHECK (cargo IN ('faturista','administrador')),
       ativo BOOLEAN NOT NULL DEFAULT true,
       criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )`;
+    // Renomeado de "papel"/"funcionario" pra "cargo"/"faturista" -- nome
+    // mais claro pro dia a dia da equipe. CREATE TABLE IF NOT EXISTS acima
+    // não roda de novo numa instalação já existente, por isso a migração
+    // explícita aqui.
+    const temPapel = await db`SELECT 1 FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'papel'`;
+    if (temPapel.length){
+      await db`ALTER TABLE usuarios RENAME COLUMN papel TO cargo`;
+    }
+    await db`UPDATE usuarios SET cargo = 'faturista' WHERE cargo = 'funcionario'`;
+    await db`ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_papel_check`;
+    await db`ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_cargo_check`;
+    await db`ALTER TABLE usuarios ADD CONSTRAINT usuarios_cargo_check CHECK (cargo IN ('faturista','administrador'))`;
+
     await db`CREATE TABLE IF NOT EXISTS sessoes (
       token VARCHAR(64) PRIMARY KEY,
       usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,

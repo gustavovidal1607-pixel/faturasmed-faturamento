@@ -72,7 +72,7 @@ function montarNav(usuario){
   const nav = document.getElementById('nav-abas');
   nav.innerHTML = '';
   for (const [id, cfg] of Object.entries(ABAS)){
-    if (cfg.admin && usuario.papel !== 'administrador') continue;
+    if (cfg.admin && usuario.cargo !== 'administrador') continue;
     const btn = document.createElement('button');
     btn.textContent = cfg.label;
     btn.dataset.aba = id;
@@ -90,9 +90,9 @@ function iniciarApp(usuario){
   document.getElementById('tela-login').hidden = true;
   document.getElementById('app').hidden = false;
   document.getElementById('usuario-nome').textContent = usuario.nome;
-  document.getElementById('usuario-papel').textContent = usuario.papel;
+  document.getElementById('usuario-papel').textContent = usuario.cargo;
   montarNav(usuario);
-  abrirAba(usuario.papel === 'administrador' ? 'painel' : 'faturamentos');
+  abrirAba(usuario.cargo === 'administrador' ? 'painel' : 'faturamentos');
 }
 
 (function(){
@@ -268,10 +268,10 @@ async function renderTarefas(){
   const usuario = usuarioAtual();
   cont.innerHTML = '<div class="vazio">Carregando...</div>';
   let usuarios = [];
-  if (usuario.papel === 'administrador') usuarios = await api('/usuarios').then(d => d.usuarios).catch(() => []);
+  if (usuario.cargo === 'administrador') usuarios = await api('/usuarios').then(d => d.usuarios).catch(() => []);
 
   let html = '<h1>Tarefas</h1><p class="subtitulo">Designadas pelo administrador, com confirmação de recebimento e finalização.</p>';
-  if (usuario.papel === 'administrador'){
+  if (usuario.cargo === 'administrador'){
     html += `
       <div class="cartao">
         <h2>Nova tarefa</h2>
@@ -288,7 +288,7 @@ async function renderTarefas(){
   html += '<div class="cartao" id="lista-tarefas"><div class="vazio">Carregando...</div></div>';
   cont.innerHTML = html;
 
-  if (usuario.papel === 'administrador'){
+  if (usuario.cargo === 'administrador'){
     document.getElementById('t-criar').addEventListener('click', async () => {
       const descricao = document.getElementById('t-descricao').value.trim();
       const prazo = document.getElementById('t-prazo').value || null;
@@ -313,17 +313,17 @@ async function carregarTarefas(){
   try{
     const data = await api('/tarefas');
     if (!data.tarefas.length){ alvo.innerHTML = '<div class="vazio">Nenhuma tarefa.</div>'; return; }
-    let html = '<table><thead><tr><th>Descrição</th><th>Prazo</th>' + (usuario.papel === 'administrador' ? '<th>Responsável</th>' : '') + '<th>Status</th><th></th></tr></thead><tbody>';
+    let html = '<table><thead><tr><th>Descrição</th><th>Prazo</th>' + (usuario.cargo === 'administrador' ? '<th>Responsável</th>' : '') + '<th>Status</th><th></th></tr></thead><tbody>';
     for (const t of data.tarefas){
       html += `<tr>
         <td>${escapeHtml(t.descricao)}${t.observacao_final ? `<div class="particularidade-txt">Obs: ${escapeHtml(t.observacao_final)}</div>` : ''}</td>
         <td>${t.prazo ? formatarData(t.prazo) : '—'}</td>
-        ${usuario.papel === 'administrador' ? `<td>${escapeHtml(t.responsavel_nome)}</td>` : ''}
+        ${usuario.cargo === 'administrador' ? `<td>${escapeHtml(t.responsavel_nome)}</td>` : ''}
         <td><span class="selo ${t.status}">${t.status}</span></td>
         <td class="acoes-linha">
           ${t.status === 'aguardando' && t.responsavel_usuario_id === usuario.id ? `<button class="btn pequeno" data-receber="${t.id}">Confirmar recebimento</button>` : ''}
           ${t.status === 'recebida' && t.responsavel_usuario_id === usuario.id ? `<button class="btn pequeno" data-finalizar="${t.id}">Finalizar</button>` : ''}
-          ${usuario.papel === 'administrador' ? `<button class="btn perigo pequeno" data-excluir-tarefa="${t.id}">Excluir</button>` : ''}
+          ${usuario.cargo === 'administrador' ? `<button class="btn perigo pequeno" data-excluir-tarefa="${t.id}">Excluir</button>` : ''}
         </td>
       </tr>`;
     }
@@ -571,12 +571,12 @@ async function renderAtribuicoes(){
     api('/prestadores').then(d => d.prestadores).catch(() => []),
     api('/convenios').then(d => d.convenios).catch(() => []),
   ]);
-  const funcionarios = usuarios.filter(u => u.ativo);
+  const faturistas = usuarios.filter(u => u.ativo);
   alvo.innerHTML = `
     <div class="cartao">
       <h2>Nova atribuição</h2>
       <div class="linha-form">
-        <div class="campo"><label>Funcionário</label><select id="at-usuario">${funcionarios.map(u => `<option value="${u.id}">${escapeHtml(u.nome)}</option>`).join('')}</select></div>
+        <div class="campo"><label>Faturista</label><select id="at-usuario">${faturistas.map(u => `<option value="${u.id}">${escapeHtml(u.nome)}</option>`).join('')}</select></div>
         <div class="campo"><label>Prestador</label><select id="at-prestador">${prestadores.map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}</select></div>
         <div class="campo"><label>Convênio</label><select id="at-convenio">${convenios.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('')}</select></div>
         <button class="btn" id="at-criar">Atribuir</button>
@@ -629,19 +629,19 @@ async function renderUsuarios(){
       <div class="linha-form">
         <div class="campo"><label>Nome</label><input type="text" id="us-nome"></div>
         <div class="campo"><label>Login</label><input type="text" id="us-login" placeholder="opcional"></div>
-        <div class="campo"><label>Papel</label><select id="us-papel"><option value="funcionario">Funcionário</option><option value="administrador">Administrador</option></select></div>
+        <div class="campo"><label>Cargo</label><select id="us-cargo"><option value="faturista">Faturista</option><option value="administrador">Administrador</option></select></div>
         <div class="campo"><label>Senha</label><input type="password" id="us-senha"></div>
         <button class="btn" id="us-criar">Criar</button>
       </div>
       <div class="erro-login" id="us-erro"></div>
     </div>
     <div class="cartao">
-      <table><thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Status</th><th></th></tr></thead><tbody>
+      <table><thead><tr><th>Nome</th><th>Login</th><th>Cargo</th><th>Status</th><th></th></tr></thead><tbody>
         ${usuarios.map(u => `
           <tr>
             <td>${escapeHtml(u.nome)}</td>
             <td>${escapeHtml(u.login)}</td>
-            <td>${u.papel}</td>
+            <td>${u.cargo}</td>
             <td><span class="selo ${u.ativo ? 'faturado' : 'pendente'}">${u.ativo ? 'ativo' : 'inativo'}</span></td>
             <td class="acoes-linha"><button class="btn secundario pequeno" data-toggle-usuario="${u.id}" data-ativo="${u.ativo}">${u.ativo ? 'Desativar' : 'Ativar'}</button></td>
           </tr>
@@ -654,11 +654,11 @@ async function renderUsuarios(){
     erroEl.textContent = '';
     const nome = document.getElementById('us-nome').value.trim();
     const login = document.getElementById('us-login').value.trim();
-    const papel = document.getElementById('us-papel').value;
+    const cargo = document.getElementById('us-cargo').value;
     const senha = document.getElementById('us-senha').value;
     if (!nome || !senha){ erroEl.textContent = 'Informe nome e senha.'; return; }
     try{
-      await api('/usuarios', { method: 'POST', body: JSON.stringify({ nome, login: login || undefined, papel, senha }) });
+      await api('/usuarios', { method: 'POST', body: JSON.stringify({ nome, login: login || undefined, cargo, senha }) });
       renderUsuarios();
     }catch(err){ erroEl.textContent = err.message; }
   });

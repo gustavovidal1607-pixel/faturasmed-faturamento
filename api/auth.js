@@ -31,7 +31,7 @@ module.exports = async (req, res) => {
       const salt = gerarSalt();
       const hash = await hashSenha(senha, salt);
       const inserido = await db`
-        INSERT INTO usuarios (login, nome, salt, hash, papel)
+        INSERT INTO usuarios (login, nome, salt, hash, cargo)
         VALUES (${login}, 'Administrador', ${salt}, ${hash}, 'administrador')
         RETURNING *
       `;
@@ -48,7 +48,7 @@ module.exports = async (req, res) => {
     const token = await criarSessao(usuario.id);
     res.status(200).json({
       token,
-      usuario: { id: usuario.id, login: usuario.login, nome: usuario.nome, papel: usuario.papel }
+      usuario: { id: usuario.id, login: usuario.login, nome: usuario.nome, cargo: usuario.cargo }
     });
   }catch(err){
     console.error('auth error', err);
