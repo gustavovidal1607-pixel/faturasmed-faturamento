@@ -1,5 +1,5 @@
 const { sql, ensureSchema, permitirCors } = require('./_db.js');
-const { usuarioDaSessao, escopoDoUsuario, paresIncluem } = require('./_auth.js');
+const { usuarioDaSessao, ehAdmin, escopoDoUsuario, paresIncluem } = require('./_auth.js');
 const { competenciaAtual } = require('./_data.js');
 const { listarLinhas } = require('./_faturamentos.js');
 
@@ -74,6 +74,16 @@ module.exports = async (req, res) => {
         VALUES (${faturamento.id}, ${faturamento.status}, ${faturamento.mes_completo}, ${faturamento.faturado_de}, ${faturamento.faturado_ate}, ${faturamento.protocolo}, ${faturamento.valor}, ${faturamento.observacao}, ${usuario.id})
       `;
       res.status(200).json({ faturamento });
+      return;
+    }
+
+    if (req.method === 'DELETE'){
+      if (!ehAdmin(usuario)){ res.status(403).json({ erro: 'Só o administrador remove um lançamento.' }); return; }
+      const id = req.query && req.query.id ? Number(req.query.id) : null;
+      if (!id){ res.status(400).json({ erro: 'Informe o id do lançamento.' }); return; }
+      const result = await db`DELETE FROM faturamentos WHERE id = ${id} RETURNING id`;
+      if (!result.length){ res.status(404).json({ erro: 'Lançamento não encontrado.' }); return; }
+      res.status(200).json({ ok: true });
       return;
     }
 

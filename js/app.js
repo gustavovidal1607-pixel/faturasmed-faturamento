@@ -27,6 +27,9 @@ function formatarData(iso){
 function formatarDataHora(iso){
   return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
+function formatarHora(iso){
+  return new Date(iso).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+}
 const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 // Máscara de moeda: digita só números, a vírgula dos centavos entra
 // sozinha (ex: "150" -> "1,50", "15000" -> "150,00").
@@ -332,6 +335,7 @@ function renderPainelLinhas(){
             <button class="btn pequeno" data-lancar="${idx}">Lançar</button>
             ${l.status === 'enviado_falta_anexo' ? `<button class="btn secundario pequeno" data-marcar-faturado="${idx}">Marcar Faturado</button>` : ''}
             ${l.faturamento_id ? `<button class="btn secundario pequeno" data-historico="${l.faturamento_id}">Histórico</button>` : ''}
+            ${l.faturamento_id ? `<button class="btn perigo pequeno" data-remover="${l.faturamento_id}">Remover</button>` : ''}
           </td>
         </tr>`;
       }
@@ -347,6 +351,14 @@ function renderPainelLinhas(){
   }
   alvo.querySelectorAll('.pl-check').forEach(chk => chk.addEventListener('change', atualizarContagem));
   alvo.querySelectorAll('[data-historico]').forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); mostrarHistorico(Number(btn.dataset.historico)); }));
+  alvo.querySelectorAll('[data-remover]').forEach(btn => btn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    if (!confirm('Remover esse lançamento? Ele volta a ficar pendente e o histórico dele é apagado.')) return;
+    try{
+      await api(`/faturamentos?id=${btn.dataset.remover}`, { method: 'DELETE' });
+      await buscarPainel();
+    }catch(err){ alert(err.message); }
+  }));
   alvo.querySelectorAll('.pl-check-grupo').forEach(chkGrupo => chkGrupo.addEventListener('change', (e) => {
     alvo.querySelectorAll(`.pl-check[data-grupo="${chkGrupo.dataset.grupo}"]`).forEach(chk => { chk.checked = e.target.checked; });
     atualizarContagem();
@@ -424,6 +436,7 @@ function abrirFormLancamento(linha, aoSalvar){
       <button class="btn" id="lf-salvar">Salvar</button>
       ${linha.status === 'enviado_falta_anexo' ? '<button class="btn secundario" id="lf-marcar-faturado">Marcar como Faturado</button>' : ''}
       <button class="btn secundario" id="lf-cancelar">Cancelar</button>
+      ${linha.faturamento_id ? '<button class="btn perigo" id="lf-remover">Remover lançamento</button>' : ''}
       <div class="erro-login" id="lf-erro"></div>
     </div>
   `;
@@ -433,6 +446,15 @@ function abrirFormLancamento(linha, aoSalvar){
     document.getElementById('lf-protocolo-wrap').hidden = e.target.value === 'pendente';
   });
   document.getElementById('lf-cancelar').addEventListener('click', fecharModal);
+  const btnRemover = document.getElementById('lf-remover');
+  if (btnRemover) btnRemover.addEventListener('click', async () => {
+    if (!confirm('Remover esse lançamento? Ele volta a ficar pendente e o histórico dele é apagado.')) return;
+    try{
+      await api(`/faturamentos?id=${linha.faturamento_id}`, { method: 'DELETE' });
+      fecharModal();
+      await salvarDepois();
+    }catch(err){ document.getElementById('lf-erro').textContent = err.message; }
+  });
 
   async function salvar(statusForcado){
     const corpo = {
@@ -896,18 +918,19 @@ async function renderAtribuicoes(){
 
 let atividadesCharts = [];
 
+const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
 async function renderAtividades(){
   const cont = document.getElementById('conteudo');
+  const anoAtual = Number(hojeBrasilAno());
   cont.innerHTML = `
     <h1>Atividades da equipe</h1>
-    <p class="subtitulo">Produção individual: lançamentos feitos por dia, no fuso de Brasília.</p>
+    <p class="subtitulo">Produção individual no ano, organizada por mês (fuso de Brasília).</p>
     <div class="cartao">
       <div class="filtros">
-        <div class="campo"><label>Período</label>
-          <select id="at-periodo">
-            <option value="7">Últimos 7 dias</option>
-            <option value="30" selected>Últimos 30 dias</option>
-            <option value="90">Últimos 90 dias</option>
+        <div class="campo"><label>Ano</label>
+          <select id="at-ano">
+            ${[anoAtual, anoAtual - 1, anoAtual - 2].map(a => `<option value="${a}" ${a === anoAtual ? 'selected' : ''}>${a}</option>`).join('')}
           </select>
         </div>
         <button class="btn" id="at-buscar">Atualizar</button>
@@ -919,47 +942,58 @@ async function renderAtividades(){
   await carregarAtividades();
 }
 
+function hojeBrasilAno(){
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric' }).format(new Date());
+}
+
 async function carregarAtividades(){
-  const dias = document.getElementById('at-periodo').value;
+  const ano = document.getElementById('at-ano').value;
   const alvo = document.getElementById('atividades-conteudo');
   alvo.innerHTML = '<div class="vazio">Carregando...</div>';
   atividadesCharts.forEach(c => c.destroy());
   atividadesCharts = [];
   try{
-    const data = await api('/atividades?dias=' + dias);
-    if (!data.usuarios.length){ alvo.innerHTML = '<div class="cartao"><div class="vazio">Nenhuma atividade registrada nesse período.</div></div>'; return; }
+    const data = await api('/atividades?ano=' + ano);
+    if (!data.usuarios.length){ alvo.innerHTML = '<div class="cartao"><div class="vazio">Nenhuma atividade registrada nesse ano.</div></div>'; return; }
 
-    alvo.innerHTML = data.usuarios.map(u => `
+    const totaisPorMes = new Map(); // mes ('1'..'12') -> total, pra desenhar os 12 meses mesmo sem atividade
+    for (let m = 1; m <= 12; m++) totaisPorMes.set(String(m).padStart(2, '0'), 0);
+
+    alvo.innerHTML = data.usuarios.map(u => {
+      return `
       <div class="cartao">
-        <h2>${escapeHtml(u.usuario_nome)} · ${u.total} ação(ões)</h2>
+        <h2>${escapeHtml(u.usuario_nome)} <span class="resumo">· ${u.total} ação(ões) em ${ano}</span></h2>
         <div class="grade-kpi">
           ${PAINEL_ABAS.map(aba => `<div class="kpi cor-${aba.id}"><div class="rotulo">${aba.label}</div><div class="numero">${u.total_por_status[aba.id] || 0}</div></div>`).join('')}
         </div>
         <div style="height:220px;"><canvas id="grafico-${u.usuario_id}"></canvas></div>
-        <h3 style="margin-top:20px;">Por dia</h3>
-        ${u.por_dia.slice().reverse().map(d => `
+        <h3 style="margin-top:20px;">Por mês</h3>
+        ${u.por_mes.length ? u.por_mes.slice().reverse().map(m => `
           <details class="grupo-prestador">
             <summary>
-              <span class="nome-prestador">${formatarData(d.dia)}</span>
-              <span class="resumo">${d.total} ação(ões)</span>
+              <span class="nome-prestador">${formatarCompetencia(m.mes)}</span>
+              <span class="resumo">${m.total} ação(ões)</span>
             </summary>
             <div class="conteudo-grupo">
-              <table><thead><tr><th>Hora</th><th>Convênio</th><th>Prestador</th><th>Tipo</th><th>Status</th></tr></thead><tbody>
-                ${d.itens.map(it => `<tr><td>${formatarDataHora(it.criado_em)}</td><td>${escapeHtml(it.convenio_nome)}</td><td>${escapeHtml(it.prestador_nome)}</td><td>${it.tipo}</td><td><span class="selo ${it.status}">${rotuloStatus(it.status)}</span></td></tr>`).join('')}
+              <table><thead><tr><th>Dia</th><th>Hora</th><th>Convênio</th><th>Prestador</th><th>Tipo</th><th>Status</th></tr></thead><tbody>
+                ${m.itens.map(it => `<tr><td>${formatarData(it.dia)}</td><td>${formatarHora(it.criado_em)}</td><td>${escapeHtml(it.convenio_nome)}</td><td>${escapeHtml(it.prestador_nome)}</td><td>${it.tipo}</td><td><span class="selo ${it.status}">${rotuloStatus(it.status)}</span></td></tr>`).join('')}
               </tbody></table>
             </div>
           </details>
-        `).join('')}
+        `).join('') : '<div class="vazio">Nenhuma ação nesse ano.</div>'}
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     for (const u of data.usuarios){
+      const porMesCompleto = new Map(totaisPorMes);
+      for (const m of u.por_mes) porMesCompleto.set(m.mes.slice(5, 7), m.total);
       const ctx = document.getElementById(`grafico-${u.usuario_id}`);
       const chart = new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: u.por_dia.map(d => formatarData(d.dia)),
-          datasets: [{ label: 'Lançamentos', data: u.por_dia.map(d => d.total), backgroundColor: '#1D4FC4', borderRadius: 4 }],
+          labels: MESES_ABREV,
+          datasets: [{ label: 'Ações', data: [...porMesCompleto.values()], backgroundColor: '#1D4FC4', borderRadius: 4 }],
         },
         options: {
           responsive: true,
