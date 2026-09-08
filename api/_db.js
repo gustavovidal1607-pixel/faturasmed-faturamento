@@ -106,8 +106,9 @@ async function ensureSchema(){
       prestador_id INTEGER NOT NULL REFERENCES prestadores(id) ON DELETE CASCADE,
       tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('SADT','CONSULTA','GIH')),
       competencia CHAR(7) NOT NULL,
-      status VARCHAR(20) NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','faturado')),
+      status VARCHAR(20) NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','enviado_falta_anexo','faturado')),
       mes_completo BOOLEAN NOT NULL DEFAULT false,
+      faturado_de DATE,
       faturado_ate DATE,
       observacao TEXT,
       lancado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
@@ -117,6 +118,13 @@ async function ensureSchema(){
     )`;
     await db`CREATE INDEX IF NOT EXISTS idx_faturamentos_competencia ON faturamentos(competencia)`;
     await db`CREATE INDEX IF NOT EXISTS idx_faturamentos_status ON faturamentos(status)`;
+    // Data inicial do período faturado, além da data final -- cobre
+    // lançamento parcial em faixa de datas (ex: faturou do dia 1 ao 15).
+    await db`ALTER TABLE faturamentos ADD COLUMN IF NOT EXISTS faturado_de DATE`;
+    // Status intermediário: já enviou pro convênio, mas falta anexar algo
+    // (guia, laudo etc) -- ainda não conta como faturado de fato.
+    await db`ALTER TABLE faturamentos DROP CONSTRAINT IF EXISTS faturamentos_status_check`;
+    await db`ALTER TABLE faturamentos ADD CONSTRAINT faturamentos_status_check CHECK (status IN ('pendente','enviado_falta_anexo','faturado'))`;
 
     // Histórico completo de alterações de um lançamento (cada POST em
     // api/faturamentos.js grava uma linha aqui, nunca some).
@@ -125,12 +133,14 @@ async function ensureSchema(){
       faturamento_id INTEGER NOT NULL REFERENCES faturamentos(id) ON DELETE CASCADE,
       status VARCHAR(20) NOT NULL,
       mes_completo BOOLEAN NOT NULL,
+      faturado_de DATE,
       faturado_ate DATE,
       observacao TEXT,
       alterado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
       criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )`;
     await db`CREATE INDEX IF NOT EXISTS idx_faturamentos_historico_faturamento ON faturamentos_historico(faturamento_id)`;
+    await db`ALTER TABLE faturamentos_historico ADD COLUMN IF NOT EXISTS faturado_de DATE`;
 
     // Tarefas avulsas do administrador pro funcionário, com confirmação de
     // recebimento e de finalização em separado.

@@ -26,7 +26,7 @@ module.exports = async (req, res) => {
       .filter(c => c.dias_restantes >= 0 && c.dias_restantes <= DIAS_ALERTA_PRAZO)
       .sort((a, b) => a.dias_restantes - b.dias_restantes);
 
-    const linhas = await listarLinhas({ competencia, escopo: null, status: 'pendente' });
+    const linhas = (await listarLinhas({ competencia, escopo: null })).filter(l => l.status !== 'faturado');
 
     res.status(200).json({
       competencia,

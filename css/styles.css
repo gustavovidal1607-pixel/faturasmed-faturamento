@@ -160,6 +160,7 @@ tr:hover td{ background: #FAFBFC; }
   font-weight: 700;
 }
 .selo.pendente{ background: var(--warning-bg); color: var(--warning); }
+.selo.enviado_falta_anexo{ background: #DBEAFE; color: var(--blue); }
 .selo.faturado{ background: var(--success-bg); color: var(--success); }
 .selo.aguardando{ background: var(--warning-bg); color: var(--warning); }
 .selo.recebida{ background: #DBEAFE; color: var(--blue); }

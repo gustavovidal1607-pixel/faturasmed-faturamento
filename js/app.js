@@ -27,6 +27,19 @@ function formatarData(iso){
 function formatarDataHora(iso){
   return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
+const ROTULOS_STATUS = { pendente: 'Pendente', enviado_falta_anexo: 'Enviado - falta anexo', faturado: 'Faturado' };
+function rotuloStatus(status){ return ROTULOS_STATUS[status] || status; }
+function opcoesStatus(comTodos){
+  const base = Object.entries(ROTULOS_STATUS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  return comTodos ? `<option value="">Todos</option>${base}` : base;
+}
+function formatarPeriodo(mesCompleto, de, ate){
+  if (mesCompleto) return 'Mês completo';
+  if (de && ate) return `De ${formatarData(de)} até ${formatarData(ate)}`;
+  if (de) return `A partir de ${formatarData(de)}`;
+  if (ate) return `Até ${formatarData(ate)}`;
+  return '—';
+}
 function usuarioAtual(){
   return JSON.parse(localStorage.getItem('usuario'));
 }
@@ -116,17 +129,27 @@ async function renderPainel(){
       }
       html += '</div>';
     }
-    html += `<div class="cartao"><h2>Pendentes de faturamento (${data.total_pendentes})</h2>`;
+    html += `<h2 style="margin:0 0 12px;">Pendentes de faturamento (${data.total_pendentes})</h2>`;
     if (!data.pendentes.length){
-      html += '<div class="vazio">Nada pendente nessa competência.</div>';
+      html += '<div class="cartao"><div class="vazio">Nada pendente nessa competência.</div></div>';
     }else{
-      html += '<table><thead><tr><th>Convênio</th><th>Prestador</th><th>Tipo</th></tr></thead><tbody>';
+      const porTipo = new Map();
       for (const l of data.pendentes){
-        html += `<tr><td>${escapeHtml(l.convenio_nome)}</td><td>${escapeHtml(l.prestador_nome)}</td><td>${l.tipo}</td></tr>`;
+        if (!porTipo.has(l.tipo)) porTipo.set(l.tipo, []);
+        porTipo.get(l.tipo).push(l);
       }
-      html += '</tbody></table>';
+      const ORDEM_TIPO = ['SADT', 'CONSULTA', 'GIH'];
+      const tipos = [...porTipo.keys()].sort((a, b) => ORDEM_TIPO.indexOf(a) - ORDEM_TIPO.indexOf(b));
+      for (const tipo of tipos){
+        const linhas = porTipo.get(tipo);
+        html += `<div class="cartao"><h2>${tipo} (${linhas.length})</h2>`;
+        html += '<table><thead><tr><th>Convênio</th><th>Prestador</th><th>Status</th></tr></thead><tbody>';
+        for (const l of linhas){
+          html += `<tr><td>${escapeHtml(l.convenio_nome)}</td><td>${escapeHtml(l.prestador_nome)}</td><td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td></tr>`;
+        }
+        html += '</tbody></table></div>';
+      }
     }
-    html += '</div>';
     cont.innerHTML = html;
   }catch(err){ cont.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
 }
@@ -153,7 +176,7 @@ async function renderFaturamentos(){
         <div class="campo"><label>Competência</label><input type="month" id="f-competencia" value="${competenciaPadrao}"></div>
         <div class="campo"><label>Convênio</label><select id="f-convenio"><option value="">Todos</option>${convenios.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('')}</select></div>
         <div class="campo"><label>Prestador</label><select id="f-prestador"><option value="">Todos</option>${prestadores.map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}</select></div>
-        <div class="campo"><label>Status</label><select id="f-status"><option value="">Todos</option><option value="pendente">Pendente</option><option value="faturado">Faturado</option></select></div>
+        <div class="campo"><label>Status</label><select id="f-status">${opcoesStatus(true)}</select></div>
         <button class="btn" id="f-buscar">Filtrar</button>
       </div>
       <div id="painel-lancamento"></div>
@@ -181,14 +204,12 @@ async function carregarFaturamentos(){
     if (!data.faturamentos.length){ alvo.innerHTML = '<div class="vazio">Nenhum lançamento encontrado para esse filtro.</div>'; return; }
     let html = '<table><thead><tr><th>Convênio</th><th>Prestador</th><th>Tipo</th><th>Status</th><th>Detalhe</th><th></th></tr></thead><tbody>';
     data.faturamentos.forEach((l, i) => {
-      const detalhe = l.status === 'faturado'
-        ? (l.mes_completo ? 'Mês completo' : (l.faturado_ate ? 'Até ' + formatarData(l.faturado_ate) : '—'))
-        : '—';
+      const detalhe = l.status !== 'pendente' ? formatarPeriodo(l.mes_completo, l.faturado_de, l.faturado_ate) : '—';
       html += `<tr>
         <td>${escapeHtml(l.convenio_nome)}</td>
         <td>${escapeHtml(l.prestador_nome)}</td>
         <td>${l.tipo}</td>
-        <td><span class="selo ${l.status}">${l.status}</span></td>
+        <td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td>
         <td>${detalhe}${l.observacao ? `<div class="particularidade-txt">${escapeHtml(l.observacao)}</div>` : ''}</td>
         <td class="acoes-linha">
           <button class="btn pequeno" data-editar="${i}">Lançar</button>
@@ -211,11 +232,11 @@ function abrirFormLancamento(linha){
       <div class="linha-form">
         <div class="campo"><label>Status</label>
           <select id="lf-status">
-            <option value="pendente" ${linha.status === 'pendente' ? 'selected' : ''}>Pendente</option>
-            <option value="faturado" ${linha.status === 'faturado' ? 'selected' : ''}>Faturado</option>
+            ${Object.entries(ROTULOS_STATUS).map(([v, l]) => `<option value="${v}" ${linha.status === v ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </div>
         <div class="campo"><label><input type="checkbox" id="lf-mes-completo" ${linha.mes_completo ? 'checked' : ''}> Mês completo</label></div>
+        <div class="campo"><label>Faturado de</label><input type="date" id="lf-faturado-de" value="${linha.faturado_de ? String(linha.faturado_de).slice(0, 10) : ''}"></div>
         <div class="campo"><label>Faturado até</label><input type="date" id="lf-faturado-ate" value="${linha.faturado_ate ? String(linha.faturado_ate).slice(0, 10) : ''}"></div>
         <div class="campo" style="flex:1;"><label>Observação</label><textarea id="lf-observacao" rows="1" style="width:100%;">${escapeHtml(linha.observacao || '')}</textarea></div>
       </div>
@@ -233,6 +254,7 @@ function abrirFormLancamento(linha){
       competencia: linha.competencia,
       status: document.getElementById('lf-status').value,
       mes_completo: document.getElementById('lf-mes-completo').checked,
+      faturado_de: document.getElementById('lf-faturado-de').value || null,
       faturado_ate: document.getElementById('lf-faturado-ate').value || null,
       observacao: document.getElementById('lf-observacao').value.trim() || null,
     };
@@ -252,8 +274,8 @@ async function mostrarHistorico(faturamentoId){
     if (!data.historico.length){ painel.innerHTML = '<div class="vazio">Sem histórico.</div>'; return; }
     let html = '<div class="cartao"><h2>Histórico</h2><table><thead><tr><th>Quando</th><th>Status</th><th>Detalhe</th><th>Por</th></tr></thead><tbody>';
     for (const h of data.historico){
-      const detalhe = h.status === 'faturado' ? (h.mes_completo ? 'Mês completo' : (h.faturado_ate ? 'Até ' + formatarData(h.faturado_ate) : '—')) : '—';
-      html += `<tr><td>${formatarDataHora(h.criado_em)}</td><td><span class="selo ${h.status}">${h.status}</span></td><td>${detalhe}</td><td>${escapeHtml(h.alterado_por_nome || '—')}</td></tr>`;
+      const detalhe = h.status !== 'pendente' ? formatarPeriodo(h.mes_completo, h.faturado_de, h.faturado_ate) : '—';
+      html += `<tr><td>${formatarDataHora(h.criado_em)}</td><td><span class="selo ${h.status}">${rotuloStatus(h.status)}</span></td><td>${detalhe}</td><td>${escapeHtml(h.alterado_por_nome || '—')}</td></tr>`;
     }
     html += '</tbody></table><button class="btn secundario" id="hist-fechar">Fechar</button></div>';
     painel.innerHTML = html;
