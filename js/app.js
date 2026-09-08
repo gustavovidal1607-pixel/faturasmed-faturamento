@@ -55,10 +55,6 @@ function formatarCompetencia(comp){
 }
 const ROTULOS_STATUS = { pendente: 'Pendente', enviado_falta_anexo: 'Enviado - falta anexo', faturado: 'Faturado' };
 function rotuloStatus(status){ return ROTULOS_STATUS[status] || status; }
-function opcoesStatus(comTodos){
-  const base = Object.entries(ROTULOS_STATUS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
-  return comTodos ? `<option value="">Todos</option>${base}` : base;
-}
 function formatarPeriodo(mesCompleto, de, ate){
   if (mesCompleto) return 'Mês completo';
   if (de && ate) return `De ${formatarData(de)} até ${formatarData(ate)}`;
@@ -100,8 +96,7 @@ document.getElementById('btn-sair').addEventListener('click', async () => {
 // ---------------- Navegação ----------------
 
 const ABAS = {
-  painel: { label: 'Painel', render: renderPainel, admin: true },
-  faturamentos: { label: 'Faturamentos', render: renderFaturamentos },
+  painel: { label: 'Controle de faturamento', render: renderPainel },
   tarefas: { label: 'Tarefas', render: renderTarefas },
   cadastros: { label: 'Cadastros', render: renderCadastros, admin: true },
   usuarios: { label: 'Usuários', render: renderUsuarios, admin: true },
@@ -159,7 +154,7 @@ function iniciarApp(usuario){
   document.getElementById('usuario-nome').textContent = usuario.nome;
   document.getElementById('usuario-papel').textContent = usuario.cargo;
   montarNav(usuario);
-  abrirAba(usuario.cargo === 'administrador' ? 'painel' : 'faturamentos');
+  abrirAba('painel');
 }
 
 (function(){
@@ -179,21 +174,47 @@ const ORDEM_TIPO = ['SADT', 'CONSULTA', 'GIH'];
 
 let painelDados = null;
 let painelSubaba = 'pendente';
+let painelConvenios = [];
+let painelPrestadores = [];
+let painelFiltro = { competencia: '', convenio_id: '', prestador_id: '' };
 
 async function renderPainel(){
   const cont = document.getElementById('conteudo');
   cont.innerHTML = '<div class="vazio">Carregando...</div>';
+  const hoje = new Date();
+  painelFiltro = { competencia: `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`, convenio_id: '', prestador_id: '' };
   try{
-    painelDados = await api('/dashboard');
+    [painelConvenios, painelPrestadores] = await Promise.all([
+      api('/convenios').then(d => d.convenios).catch(() => []),
+      api('/prestadores').then(d => d.prestadores).catch(() => []),
+    ]);
     painelSubaba = 'pendente';
-    montarPainel();
+    await buscarPainel();
   }catch(err){ cont.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
+}
+
+async function buscarPainel(){
+  const params = new URLSearchParams({ competencia: painelFiltro.competencia });
+  if (painelFiltro.convenio_id) params.set('convenio_id', painelFiltro.convenio_id);
+  if (painelFiltro.prestador_id) params.set('prestador_id', painelFiltro.prestador_id);
+  painelDados = await api('/dashboard?' + params.toString());
+  montarPainel();
 }
 
 function montarPainel(){
   const cont = document.getElementById('conteudo');
   const data = painelDados;
-  let html = `<h1>Painel</h1><p class="subtitulo">Competência ${formatarCompetencia(data.competencia)}</p>`;
+  let html = `<h1>Controle de faturamento</h1><p class="subtitulo">Competência ${formatarCompetencia(data.competencia)}</p>`;
+  html += `
+    <div class="cartao">
+      <div class="filtros">
+        <div class="campo"><label>Competência</label><input type="month" id="pn-competencia" value="${painelFiltro.competencia}"></div>
+        <div class="campo"><label>Convênio</label><select id="pn-convenio"><option value="">Todos</option>${painelConvenios.map(c => `<option value="${c.id}" ${String(c.id) === String(painelFiltro.convenio_id) ? 'selected' : ''}>${escapeHtml(c.nome)}</option>`).join('')}</select></div>
+        <div class="campo"><label>Prestador</label><select id="pn-prestador"><option value="">Todos</option>${painelPrestadores.map(p => `<option value="${p.id}" ${String(p.id) === String(painelFiltro.prestador_id) ? 'selected' : ''}>${escapeHtml(p.nome)}</option>`).join('')}</select></div>
+        <button class="btn" id="pn-filtrar">Filtrar</button>
+      </div>
+    </div>
+  `;
   if (data.prazos_proximos.length){
     html += '<div class="cartao"><h2>Prazos de fechamento chegando</h2>';
     for (const c of data.prazos_proximos){
@@ -214,6 +235,16 @@ function montarPainel(){
   }
   html += '</div><div id="painel-lancamento"></div><div id="painel-subconteudo"></div>';
   cont.innerHTML = html;
+
+  document.getElementById('pn-filtrar').addEventListener('click', () => {
+    painelFiltro = {
+      competencia: document.getElementById('pn-competencia').value || painelFiltro.competencia,
+      convenio_id: document.getElementById('pn-convenio').value,
+      prestador_id: document.getElementById('pn-prestador').value,
+    };
+    painelSubaba = 'pendente';
+    buscarPainel();
+  });
 
   document.querySelectorAll('#painel-kpis .kpi').forEach(card => {
     card.style.cursor = 'pointer';
@@ -270,6 +301,7 @@ function renderPainelLinhas(){
         <td class="acoes-linha">
           <button class="btn pequeno" data-lancar="${idx}">Lançar</button>
           ${l.status === 'enviado_falta_anexo' ? `<button class="btn secundario pequeno" data-marcar-faturado="${idx}">Marcar Faturado</button>` : ''}
+          ${l.faturamento_id ? `<button class="btn secundario pequeno" data-historico="${l.faturamento_id}">Histórico</button>` : ''}
         </td>
       </tr>`;
     }
@@ -282,6 +314,7 @@ function renderPainelLinhas(){
     document.getElementById('pl-contagem').textContent = `${checksMarcados().length} selecionado(s)`;
   }
   alvo.querySelectorAll('.pl-check').forEach(chk => chk.addEventListener('change', atualizarContagem));
+  alvo.querySelectorAll('[data-historico]').forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); mostrarHistorico(Number(btn.dataset.historico)); }));
   alvo.querySelectorAll('.pl-check-grupo').forEach(chkGrupo => chkGrupo.addEventListener('change', (e) => {
     alvo.querySelectorAll(`.pl-check[data-prestador="${chkGrupo.dataset.prestador}"]`).forEach(chk => { chk.checked = e.target.checked; });
     atualizarContagem();
@@ -290,15 +323,13 @@ function renderPainelLinhas(){
   alvo.querySelectorAll('[data-lancar]').forEach(btn => btn.addEventListener('click', (e) => {
     e.preventDefault();
     abrirFormLancamento(painelLinhasCache[Number(btn.dataset.lancar)], 'painel-lancamento', async () => {
-      painelDados = await api('/dashboard');
-      montarPainel();
+      await buscarPainel();
     });
   }));
   alvo.querySelectorAll('[data-marcar-faturado]').forEach(btn => btn.addEventListener('click', async (e) => {
     e.preventDefault();
     await marcarComoFaturado([painelLinhasCache[Number(btn.dataset.marcarFaturado)]]);
-    painelDados = await api('/dashboard');
-    montarPainel();
+    await buscarPainel();
   }));
 
   const btnLote = document.getElementById('pl-marcar-lote');
@@ -306,8 +337,7 @@ function renderPainelLinhas(){
     const selecionadas = checksMarcados().map(chk => painelLinhasCache[Number(chk.dataset.idx)]);
     if (!selecionadas.length){ alert('Selecione ao menos um lançamento.'); return; }
     await marcarComoFaturado(selecionadas);
-    painelDados = await api('/dashboard');
-    montarPainel();
+    await buscarPainel();
   });
 }
 
@@ -331,128 +361,9 @@ async function marcarComoFaturado(linhas){
   }
 }
 
-// ---------------- Faturamentos ----------------
-
-let faturamentosCache = [];
-
-async function renderFaturamentos(){
-  const cont = document.getElementById('conteudo');
-  cont.innerHTML = '<div class="vazio">Carregando...</div>';
-  const hoje = new Date();
-  const competenciaPadrao = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
-  const [convenios, prestadores] = await Promise.all([
-    api('/convenios').then(d => d.convenios).catch(() => []),
-    api('/prestadores').then(d => d.prestadores).catch(() => []),
-  ]);
-
-  cont.innerHTML = `
-    <h1>Faturamentos</h1>
-    <p class="subtitulo">Marque o que já foi faturado por competência.</p>
-    <div class="grade-kpi" id="faturamentos-kpis"></div>
-    <div class="cartao">
-      <div class="filtros">
-        <div class="campo"><label>Competência</label><input type="month" id="f-competencia" value="${competenciaPadrao}"></div>
-        <div class="campo"><label>Convênio</label><select id="f-convenio"><option value="">Todos</option>${convenios.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('')}</select></div>
-        <div class="campo"><label>Prestador</label><select id="f-prestador"><option value="">Todos</option>${prestadores.map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}</select></div>
-        <div class="campo"><label>Status</label><select id="f-status">${opcoesStatus(true)}</select></div>
-        <button class="btn" id="f-buscar">Filtrar</button>
-      </div>
-      <div id="painel-lancamento"></div>
-      <div id="tabela-faturamentos"></div>
-    </div>
-  `;
-  document.getElementById('f-buscar').addEventListener('click', carregarFaturamentos);
-  await carregarFaturamentos();
-}
-
-async function carregarFaturamentos(){
-  const competencia = document.getElementById('f-competencia').value;
-  const convenio_id = document.getElementById('f-convenio').value;
-  const prestador_id = document.getElementById('f-prestador').value;
-  const status = document.getElementById('f-status').value;
-  const params = new URLSearchParams({ competencia });
-  if (convenio_id) params.set('convenio_id', convenio_id);
-  if (prestador_id) params.set('prestador_id', prestador_id);
-  if (status) params.set('status', status);
-  const alvo = document.getElementById('tabela-faturamentos');
-  const kpiAlvo = document.getElementById('faturamentos-kpis');
-  alvo.innerHTML = '<div class="vazio">Carregando...</div>';
-  try{
-    const data = await api('/faturamentos?' + params.toString());
-    faturamentosCache = data.faturamentos;
-
-    const contagens = { pendente: 0, enviado_falta_anexo: 0, faturado: 0 };
-    for (const l of data.faturamentos) contagens[l.status] = (contagens[l.status] || 0) + 1;
-    kpiAlvo.innerHTML = PAINEL_ABAS.map(aba => `<div class="kpi cor-${aba.id}"><div class="rotulo">${aba.label}</div><div class="numero">${contagens[aba.id] || 0}</div></div>`).join('');
-
-    if (!data.faturamentos.length){ alvo.innerHTML = '<div class="vazio">Nenhum lançamento encontrado para esse filtro.</div>'; return; }
-
-    const porPrestador = new Map();
-    data.faturamentos.forEach((l, idx) => {
-      if (!porPrestador.has(l.prestador_id)) porPrestador.set(l.prestador_id, { nome: l.prestador_nome, idxs: [] });
-      porPrestador.get(l.prestador_id).idxs.push(idx);
-    });
-    const prestadoresOrdenados = [...porPrestador.entries()].sort((a, b) => a[1].nome.localeCompare(b[1].nome));
-
-    let html = `
-      <div class="barra-lote">
-        <span class="contagem" id="ft-contagem">0 selecionado(s)</span>
-        <button class="btn secundario pequeno" id="ft-marcar-lote">Marcar selecionados como Faturado</button>
-      </div>
-    `;
-    for (const [prestadorId, grupo] of prestadoresOrdenados){
-      const convenios = new Set(grupo.idxs.map(i => data.faturamentos[i].convenio_id));
-      const tipos = new Set(grupo.idxs.map(i => data.faturamentos[i].tipo));
-      html += `<details class="grupo-prestador">
-        <summary>
-          <input type="checkbox" class="ft-check-grupo" data-prestador="${prestadorId}" onclick="event.stopPropagation()">
-          <span class="nome-prestador">${escapeHtml(grupo.nome)}</span>
-          <span class="resumo">${grupo.idxs.length} lançamento(s) · ${tipos.size} tipo(s) · ${convenios.size} convênio(s)</span>
-        </summary>
-        <div class="conteudo-grupo">
-          <table><thead><tr><th></th><th>Convênio</th><th>Tipo</th><th>Status</th><th>Detalhe</th><th></th></tr></thead><tbody>`;
-      for (const idx of grupo.idxs){
-        const l = data.faturamentos[idx];
-        const detalhe = l.status !== 'pendente' ? formatarPeriodo(l.mes_completo, l.faturado_de, l.faturado_ate) : '—';
-        html += `<tr>
-          <td><input type="checkbox" class="ft-check" data-prestador="${prestadorId}" data-idx="${idx}"></td>
-          <td>${escapeHtml(l.convenio_nome)}</td>
-          <td>${l.tipo}</td>
-          <td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td>
-          <td>${detalhe}${l.observacao ? `<div class="particularidade-txt">${escapeHtml(l.observacao)}</div>` : ''}</td>
-          <td class="acoes-linha">
-            <button class="btn pequeno" data-editar="${idx}">Lançar</button>
-            ${l.faturamento_id ? `<button class="btn secundario pequeno" data-historico="${l.faturamento_id}">Histórico</button>` : ''}
-          </td>
-        </tr>`;
-      }
-      html += '</tbody></table></div></details>';
-    }
-    alvo.innerHTML = html;
-
-    function checksMarcados(){ return [...alvo.querySelectorAll('.ft-check:checked')]; }
-    function atualizarContagem(){ document.getElementById('ft-contagem').textContent = `${checksMarcados().length} selecionado(s)`; }
-    alvo.querySelectorAll('.ft-check').forEach(chk => chk.addEventListener('change', atualizarContagem));
-    alvo.querySelectorAll('.ft-check-grupo').forEach(chkGrupo => chkGrupo.addEventListener('change', (e) => {
-      alvo.querySelectorAll(`.ft-check[data-prestador="${chkGrupo.dataset.prestador}"]`).forEach(chk => { chk.checked = e.target.checked; });
-      atualizarContagem();
-    }));
-
-    alvo.querySelectorAll('[data-editar]').forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); abrirFormLancamento(faturamentosCache[Number(btn.dataset.editar)]); }));
-    alvo.querySelectorAll('[data-historico]').forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); mostrarHistorico(Number(btn.dataset.historico)); }));
-
-    document.getElementById('ft-marcar-lote').addEventListener('click', async () => {
-      const selecionadas = checksMarcados().map(chk => faturamentosCache[Number(chk.dataset.idx)]);
-      if (!selecionadas.length){ alert('Selecione ao menos um lançamento.'); return; }
-      await marcarComoFaturado(selecionadas);
-      await carregarFaturamentos();
-    });
-  }catch(err){ alvo.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
-}
-
 function abrirFormLancamento(linha, alvoId, aoSalvar){
   const painel = document.getElementById(alvoId || 'painel-lancamento');
-  const salvarDepois = aoSalvar || carregarFaturamentos;
+  const salvarDepois = aoSalvar || buscarPainel;
   const mostraProtocolo = linha.status !== 'pendente';
   painel.innerHTML = `
     <div class="cartao" style="background:#F8FAFC;">

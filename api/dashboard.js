@@ -21,7 +21,9 @@ module.exports = async (req, res) => {
 
     const hoje = hojeBrasilISO();
     const diaHoje = Number(hoje.slice(8, 10));
-    const competencia = competenciaAtual();
+    const competencia = (req.query && /^\d{4}-\d{2}$/.test(req.query.competencia)) ? req.query.competencia : competenciaAtual();
+    const convenioId = req.query && req.query.convenio_id ? Number(req.query.convenio_id) : null;
+    const prestadorId = req.query && req.query.prestador_id ? Number(req.query.prestador_id) : null;
 
     let convenios = await db`SELECT * FROM convenios WHERE ativo = true AND prazo_dia IS NOT NULL`;
     if (escopo !== null){
@@ -33,7 +35,7 @@ module.exports = async (req, res) => {
       .filter(c => c.dias_restantes >= 0 && c.dias_restantes <= DIAS_ALERTA_PRAZO)
       .sort((a, b) => a.dias_restantes - b.dias_restantes);
 
-    const linhas = await listarLinhas({ competencia, escopo });
+    const linhas = await listarLinhas({ competencia, escopo, convenioId, prestadorId });
     const pendentes = linhas.filter(l => l.status !== 'faturado');
 
     const porPrestador = new Map();
