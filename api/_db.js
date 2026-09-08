@@ -21,8 +21,8 @@ async function ensureSchema(){
     // existe, o resto com certeza também já rodou antes -- pula tudo e
     // economiza esses round-trips no caminho comum. Só funciona se toda
     // migração nova for sempre adicionada no FINAL desta sequência.
-    const jaMigrado = await db`SELECT 1 FROM information_schema.columns WHERE table_name = 'faturamentos_protocolos' AND column_name = 'observacao'`;
-    if (jaMigrado.length) return;
+    const colunaAntiga = await db`SELECT 1 FROM information_schema.columns WHERE table_name = 'vinculos' AND column_name = 'particularidades'`;
+    if (!colunaAntiga.length) return;
 
     await db`CREATE TABLE IF NOT EXISTS usuarios (
       id SERIAL PRIMARY KEY,
@@ -201,6 +201,37 @@ async function ensureSchema(){
     // Observação é por protocolo (cada um pode ter uma particularidade
     // diferente), não mais um campo único pro lançamento inteiro.
     await db`ALTER TABLE faturamentos_protocolos ADD COLUMN IF NOT EXISTS observacao TEXT`;
+
+    // Nem todo prestador de um convênio faz os mesmos tipos (ex: um só
+    // faz SADT, outro só CONSULTA) -- e a particularidade de como
+    // faturar muda de tipo pra tipo. Sai de "convenio.tipos" (genérico,
+    // valia pra todo mundo) pra virar uma escolha por vínculo, com uma
+    // particularidade própria por tipo escolhido.
+    await db`CREATE TABLE IF NOT EXISTS vinculos_tipos (
+      id SERIAL PRIMARY KEY,
+      vinculo_id INTEGER NOT NULL REFERENCES vinculos(id) ON DELETE CASCADE,
+      tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('SADT','CONSULTA','GIH')),
+      particularidades TEXT,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE(vinculo_id, tipo)
+    )`;
+    // Migração única: cria uma linha por tipo do convênio pra cada
+    // vínculo que ainda não tem nenhuma (preserva o comportamento atual
+    // -- todos os tipos do convênio -- até o administrador ajustar quais
+    // esse prestador realmente faz), copiando a particularidade antiga
+    // (que era só uma) pra todas como ponto de partida.
+    await db`
+      INSERT INTO vinculos_tipos (vinculo_id, tipo, particularidades)
+      SELECT v.id, t.tipo, v.particularidades
+      FROM vinculos v
+      JOIN convenios c ON c.id = v.convenio_id
+      CROSS JOIN LATERAL unnest(c.tipos) AS t(tipo)
+      WHERE NOT EXISTS (SELECT 1 FROM vinculos_tipos vt WHERE vt.vinculo_id = v.id)
+      ON CONFLICT (vinculo_id, tipo) DO NOTHING
+    `;
+    // A particularidade agora mora em vinculos_tipos (uma por tipo); a
+    // coluna antiga no vínculo já foi copiada pra lá na migração acima.
+    await db`ALTER TABLE vinculos DROP COLUMN IF EXISTS particularidades`;
   })();
   schemaReady.catch(() => { schemaReady = null; });
   return schemaReady;

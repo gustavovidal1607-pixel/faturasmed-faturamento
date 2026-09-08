@@ -396,6 +396,9 @@ async function renderConteudoTipo(idx){
     const total = protocolos.reduce((soma, p) => soma + (p.valor != null ? Number(p.valor) : 0), 0);
 
     let html = '<p class="subtitulo" style="margin:0 0 10px;">Histórico completo desse prestador+tipo.</p>';
+    if (linha.particularidades){
+      html += `<div class="particularidade-txt" style="margin-bottom:10px;">Particularidade (${escapeHtml(linha.tipo)}): ${escapeHtml(linha.particularidades)}</div>`;
+    }
     if (protocolos.length){
       html += '<table><thead><tr><th>Protocolo</th><th>Competência</th><th>Data</th><th>Guias</th><th>Valor</th><th>Status</th><th></th></tr></thead><tbody>';
       for (const p of protocolos){
@@ -730,6 +733,37 @@ async function renderConveniosCad(){
   }));
 }
 
+// Cada tipo escolhido no vínculo tem sua própria caixa de particularidade
+// (só aparece depois de marcar o checkbox) -- nem todo prestador faz os 3
+// tipos desse convênio, e o jeito de faturar muda de tipo pra tipo.
+function camposTiposVinculo(prefix, tiposAtuais){
+  const porTipo = new Map((tiposAtuais || []).map(t => [t.tipo, t.particularidades || '']));
+  return ORDEM_TIPO.map(t => `
+    <div class="tipo-vinculo-bloco" style="margin-bottom:8px;">
+      <label style="font-size:13px;font-weight:400;">
+        <input type="checkbox" class="${prefix}-tipo-check" data-tipo="${t}" ${porTipo.has(t) ? 'checked' : ''}> ${t}
+      </label>
+      <textarea class="${prefix}-tipo-particularidade" data-tipo="${t}" rows="2" placeholder="Particularidade para ${t}" style="width:100%;margin-top:4px;${porTipo.has(t) ? '' : 'display:none;'}">${escapeHtml(porTipo.get(t) || '')}</textarea>
+    </div>
+  `).join('');
+}
+
+function ligarTogglesTiposVinculo(container, prefix){
+  container.querySelectorAll(`.${prefix}-tipo-check`).forEach(chk => {
+    chk.addEventListener('change', () => {
+      const txt = container.querySelector(`.${prefix}-tipo-particularidade[data-tipo="${chk.dataset.tipo}"]`);
+      if (txt) txt.style.display = chk.checked ? '' : 'none';
+    });
+  });
+}
+
+function coletarTiposVinculo(container, prefix){
+  return Array.from(container.querySelectorAll(`.${prefix}-tipo-check:checked`)).map(chk => {
+    const txt = container.querySelector(`.${prefix}-tipo-particularidade[data-tipo="${chk.dataset.tipo}"]`);
+    return { tipo: chk.dataset.tipo, particularidades: txt ? txt.value.trim() || null : null };
+  });
+}
+
 async function renderVinculos(){
   const alvo = document.getElementById('cadastros-conteudo');
   alvo.innerHTML = '<div class="vazio">Carregando...</div>';
@@ -748,20 +782,20 @@ async function renderVinculos(){
         <div class="campo"><label>Senha do portal</label><input type="text" id="vc-senha"></div>
       </div>
       <div class="linha-form">
-        <div class="campo" style="flex:1;"><label>Particularidades (como faturar esse prestador nesse convênio)</label><textarea id="vc-particularidades" rows="2" style="width:100%;"></textarea></div>
+        <div class="campo" style="flex:1;"><label>Tipos faturados por esse prestador nesse convênio (com a particularidade de cada um)</label>${camposTiposVinculo('vc', [])}</div>
       </div>
       <button class="btn" id="vc-criar">Vincular</button>
       <div class="erro-login" id="vc-erro"></div>
     </div>
     <div id="vinculo-edicao"></div>
     <div class="cartao">
-      <table><thead><tr><th>Prestador</th><th>Convênio</th><th>Login</th><th>Particularidades</th><th>Status</th><th></th></tr></thead><tbody>
+      <table><thead><tr><th>Prestador</th><th>Convênio</th><th>Login</th><th>Tipos</th><th>Status</th><th></th></tr></thead><tbody>
         ${vinculos.map(v => `
           <tr>
             <td>${escapeHtml(v.prestador_nome)}</td>
             <td>${escapeHtml(v.convenio_nome)}</td>
             <td>${escapeHtml(v.login_portal || '—')}</td>
-            <td class="particularidade-txt">${escapeHtml(v.particularidades || '—')}</td>
+            <td class="particularidade-txt" title="${escapeHtml((v.tipos || []).map(t => `${t.tipo}: ${t.particularidades || '—'}`).join(' | '))}">${(v.tipos || []).map(t => escapeHtml(t.tipo)).join(', ') || '—'}</td>
             <td><span class="selo ${v.ativo ? 'faturado' : 'pendente'}">${v.ativo ? 'ativo' : 'inativo'}</span></td>
             <td class="acoes-linha">
               <button class="btn secundario pequeno" data-editar-vinculo="${v.id}">Editar</button>
@@ -772,17 +806,20 @@ async function renderVinculos(){
       </tbody></table>
     </div>
   `;
+  ligarTogglesTiposVinculo(alvo, 'vc');
 
   document.getElementById('vc-criar').addEventListener('click', async () => {
     const erroEl = document.getElementById('vc-erro');
     erroEl.textContent = '';
+    const tipos = coletarTiposVinculo(alvo, 'vc');
+    if (!tipos.length){ erroEl.textContent = 'Selecione ao menos um tipo (SADT, CONSULTA ou GIH).'; return; }
     try{
       await api('/vinculos', { method: 'POST', body: JSON.stringify({
         prestador_id: Number(document.getElementById('vc-prestador').value),
         convenio_id: Number(document.getElementById('vc-convenio').value),
         login_portal: document.getElementById('vc-login').value.trim() || null,
         senha_portal: document.getElementById('vc-senha').value || null,
-        particularidades: document.getElementById('vc-particularidades').value.trim() || null,
+        tipos,
       }) });
       renderVinculos();
     }catch(err){ erroEl.textContent = err.message; }
@@ -810,16 +847,20 @@ async function renderVinculos(){
           <div class="campo"><label>Senha do portal</label><input type="text" id="ve-senha" value="${escapeHtml(v.senha_portal || '')}"></div>
         </div>
         <div class="linha-form">
-          <div class="campo" style="flex:1;"><label>Particularidades</label><textarea id="ve-particularidades" rows="2" style="width:100%;">${escapeHtml(v.particularidades || '')}</textarea></div>
+          <div class="campo" style="flex:1;"><label>Tipos faturados por esse prestador nesse convênio (com a particularidade de cada um)</label>${camposTiposVinculo('ve', v.tipos)}</div>
         </div>
         <button class="btn" id="ve-salvar">Salvar</button>
         <button class="btn secundario" id="ve-cancelar">Cancelar</button>
         <div class="erro-login" id="ve-erro"></div>
       </div>
     `;
+    ligarTogglesTiposVinculo(painel, 've');
     painel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     document.getElementById('ve-cancelar').addEventListener('click', () => { painel.innerHTML = ''; });
     document.getElementById('ve-salvar').addEventListener('click', async () => {
+      const erroEl = document.getElementById('ve-erro');
+      const tipos = coletarTiposVinculo(painel, 've');
+      if (!tipos.length){ erroEl.textContent = 'Selecione ao menos um tipo (SADT, CONSULTA ou GIH).'; return; }
       try{
         await api(`/vinculos?id=${v.id}`, { method: 'PATCH', body: JSON.stringify({
           prestador_id: Number(document.getElementById('ve-prestador').value),
@@ -827,11 +868,11 @@ async function renderVinculos(){
           ativo: document.getElementById('ve-ativo').value === 'true',
           login_portal: document.getElementById('ve-login').value.trim() || null,
           senha_portal: document.getElementById('ve-senha').value || null,
-          particularidades: document.getElementById('ve-particularidades').value.trim() || null,
+          tipos,
         }) });
         painel.innerHTML = '';
         renderVinculos();
-      }catch(err){ document.getElementById('ve-erro').textContent = err.message; }
+      }catch(err){ erroEl.textContent = err.message; }
     });
   }));
 }

@@ -8,7 +8,7 @@ const { sql } = require('./_db.js');
 async function listarLinhas({ competencia, escopo, convenioId, prestadorId, status }){
   const db = sql();
   let vinculos = await db`
-    SELECT v.prestador_id, v.convenio_id, p.nome AS prestador_nome, c.nome AS convenio_nome, c.tipos
+    SELECT v.id AS vinculo_id, v.prestador_id, v.convenio_id, p.nome AS prestador_nome, c.nome AS convenio_nome
     FROM vinculos v
     JOIN prestadores p ON p.id = v.prestador_id
     JOIN convenios c ON c.id = v.convenio_id
@@ -21,6 +21,20 @@ async function listarLinhas({ competencia, escopo, convenioId, prestadorId, stat
   }
   if (convenioId) vinculos = vinculos.filter(v => v.convenio_id === convenioId);
   if (prestadorId) vinculos = vinculos.filter(v => v.prestador_id === prestadorId);
+
+  const idsVinculos = vinculos.map(v => v.vinculo_id);
+  const tiposPorVinculo = new Map(); // vinculo_id -> [{ tipo, particularidades }]
+  if (idsVinculos.length){
+    const tiposRows = await db`
+      SELECT vinculo_id, tipo, particularidades FROM vinculos_tipos
+      WHERE vinculo_id = ANY(${idsVinculos})
+      ORDER BY tipo
+    `;
+    for (const t of tiposRows){
+      if (!tiposPorVinculo.has(t.vinculo_id)) tiposPorVinculo.set(t.vinculo_id, []);
+      tiposPorVinculo.get(t.vinculo_id).push(t);
+    }
+  }
 
   const lancamentos = await db`SELECT * FROM faturamentos WHERE competencia = ${competencia}`;
   const porChave = new Map(lancamentos.map(l => [`${l.convenio_id}:${l.prestador_id}:${l.tipo}`, l]));
@@ -42,7 +56,8 @@ async function listarLinhas({ competencia, escopo, convenioId, prestadorId, stat
 
   let linhas = [];
   for (const v of vinculos){
-    for (const tipo of v.tipos){
+    const tiposDoVinculo = tiposPorVinculo.get(v.vinculo_id) || [];
+    for (const { tipo, particularidades } of tiposDoVinculo){
       const l = porChave.get(`${v.convenio_id}:${v.prestador_id}:${tipo}`);
       const resumo = l ? resumoProtocolos.get(l.id) : null;
       linhas.push({
@@ -51,6 +66,7 @@ async function listarLinhas({ competencia, escopo, convenioId, prestadorId, stat
         prestador_id: v.prestador_id,
         prestador_nome: v.prestador_nome,
         tipo,
+        particularidades: particularidades || null,
         competencia,
         status: l ? l.status : 'pendente',
         mes_completo: l ? !!l.mes_completo : false,

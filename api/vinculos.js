@@ -13,6 +13,24 @@ function comSenhaDecifrada(v){
   return { ...resto, senha_portal };
 }
 
+const TIPOS_VALIDOS = ['SADT', 'CONSULTA', 'GIH'];
+
+// Cada vínculo escolhe quais tipos esse prestador realmente faz para esse
+// convênio (nem todo mundo faz os 3), e cada tipo tem sua própria
+// particularidade de faturamento -- substitui as linhas antigas por
+// completo a cada chamada (mais simples que diff incremental).
+async function salvarTipos(db, vinculoId, tipos){
+  if (!Array.isArray(tipos)) return;
+  const validos = tipos.filter(t => t && TIPOS_VALIDOS.includes(t.tipo));
+  await db`DELETE FROM vinculos_tipos WHERE vinculo_id = ${vinculoId}`;
+  for (const t of validos){
+    await db`
+      INSERT INTO vinculos_tipos (vinculo_id, tipo, particularidades)
+      VALUES (${vinculoId}, ${t.tipo}, ${t.particularidades || null})
+    `;
+  }
+}
+
 module.exports = async (req, res) => {
   if (permitirCors(req, res)) return;
   try{
@@ -33,21 +51,33 @@ module.exports = async (req, res) => {
         `;
         const escopo = await escopoDoUsuario(usuario);
         if (escopo !== null) rows = rows.filter(v => paresIncluem(escopo, v.prestador_id, v.convenio_id));
-        res.status(200).json({ vinculos: rows.map(comSenhaDecifrada) });
+        const idsVinculos = rows.map(v => v.id);
+        const tiposPorVinculo = new Map();
+        if (idsVinculos.length){
+          const tiposRows = await db`SELECT vinculo_id, tipo, particularidades FROM vinculos_tipos WHERE vinculo_id = ANY(${idsVinculos}) ORDER BY tipo`;
+          for (const t of tiposRows){
+            if (!tiposPorVinculo.has(t.vinculo_id)) tiposPorVinculo.set(t.vinculo_id, []);
+            tiposPorVinculo.get(t.vinculo_id).push({ tipo: t.tipo, particularidades: t.particularidades });
+          }
+        }
+        const comTipos = rows.map(v => ({ ...comSenhaDecifrada(v), tipos: tiposPorVinculo.get(v.id) || [] }));
+        res.status(200).json({ vinculos: comTipos });
         return;
       }
       if (req.method === 'POST'){
         if (!ehAdmin(usuario)){ res.status(403).json({ erro: 'Acesso restrito ao administrador.' }); return; }
-        const { prestador_id, convenio_id, login_portal, senha_portal, particularidades } = req.body || {};
+        const { prestador_id, convenio_id, login_portal, senha_portal, tipos } = req.body || {};
         if (!prestador_id || !convenio_id){ res.status(400).json({ erro: 'Selecione o prestador e o convênio.' }); return; }
+        if (!Array.isArray(tipos) || !tipos.some(t => t && TIPOS_VALIDOS.includes(t.tipo))){ res.status(400).json({ erro: 'Selecione ao menos um tipo (SADT, CONSULTA ou GIH).' }); return; }
         const cifra = senha_portal ? cifrar(senha_portal) : { senha_cifrada: null, senha_iv: null, senha_auth_tag: null };
         try{
           const inserido = await db`
-            INSERT INTO vinculos (prestador_id, convenio_id, login_portal, senha_cifrada, senha_iv, senha_auth_tag, particularidades)
-            VALUES (${prestador_id}, ${convenio_id}, ${login_portal || null}, ${cifra.senha_cifrada}, ${cifra.senha_iv}, ${cifra.senha_auth_tag}, ${particularidades || null})
+            INSERT INTO vinculos (prestador_id, convenio_id, login_portal, senha_cifrada, senha_iv, senha_auth_tag)
+            VALUES (${prestador_id}, ${convenio_id}, ${login_portal || null}, ${cifra.senha_cifrada}, ${cifra.senha_iv}, ${cifra.senha_auth_tag})
             RETURNING *
           `;
-          res.status(201).json({ vinculo: comSenhaDecifrada(inserido[0]) });
+          await salvarTipos(db, inserido[0].id, tipos);
+          res.status(201).json({ vinculo: { ...comSenhaDecifrada(inserido[0]), tipos: tipos.filter(t => t && TIPOS_VALIDOS.includes(t.tipo)) } });
         }catch(err){
           if (err.code === '23505'){ res.status(409).json({ erro: 'Esse prestador já está vinculado a esse convênio.' }); return; }
           throw err;
@@ -65,9 +95,13 @@ module.exports = async (req, res) => {
       const escopo = await escopoDoUsuario(usuario);
       if (!paresIncluem(escopo, vinculo.prestador_id, vinculo.convenio_id)){ res.status(403).json({ erro: 'Você não tem acesso a esse vínculo.' }); return; }
 
-      const { prestador_id, convenio_id, login_portal, senha_portal, particularidades, ativo } = req.body || {};
+      const { prestador_id, convenio_id, login_portal, senha_portal, tipos, ativo } = req.body || {};
       if ((ativo !== undefined || prestador_id !== undefined || convenio_id !== undefined) && !ehAdmin(usuario)){
         res.status(403).json({ erro: 'Só o administrador altera prestador, convênio ou status do vínculo.' });
+        return;
+      }
+      if (tipos !== undefined && (!Array.isArray(tipos) || !tipos.some(t => t && TIPOS_VALIDOS.includes(t.tipo)))){
+        res.status(400).json({ erro: 'Selecione ao menos um tipo (SADT, CONSULTA ou GIH).' });
         return;
       }
 
@@ -83,12 +117,13 @@ module.exports = async (req, res) => {
             senha_cifrada = ${cifra.senha_cifrada},
             senha_iv = ${cifra.senha_iv},
             senha_auth_tag = ${cifra.senha_auth_tag},
-            particularidades = COALESCE(${particularidades ?? null}, particularidades),
             ativo = COALESCE(${ativo ?? null}, ativo)
           WHERE id = ${id}
           RETURNING *
         `;
-        res.status(200).json({ vinculo: comSenhaDecifrada(result[0]) });
+        if (tipos !== undefined) await salvarTipos(db, id, tipos);
+        const tiposRows = await db`SELECT tipo, particularidades FROM vinculos_tipos WHERE vinculo_id = ${id} ORDER BY tipo`;
+        res.status(200).json({ vinculo: { ...comSenhaDecifrada(result[0]), tipos: tiposRows } });
       }catch(err){
         if (err.code === '23505'){ res.status(409).json({ erro: 'Esse prestador já está vinculado a esse convênio.' }); return; }
         throw err;
