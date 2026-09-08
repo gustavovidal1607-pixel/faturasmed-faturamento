@@ -212,6 +212,7 @@ function montarPainel(){
         <div class="campo"><label>Convênio</label><select id="pn-convenio"><option value="">Todos</option>${painelConvenios.map(c => `<option value="${c.id}" ${String(c.id) === String(painelFiltro.convenio_id) ? 'selected' : ''}>${escapeHtml(c.nome)}</option>`).join('')}</select></div>
         <div class="campo"><label>Prestador</label><select id="pn-prestador"><option value="">Todos</option>${painelPrestadores.map(p => `<option value="${p.id}" ${String(p.id) === String(painelFiltro.prestador_id) ? 'selected' : ''}>${escapeHtml(p.nome)}</option>`).join('')}</select></div>
         <button class="btn" id="pn-filtrar">Filtrar</button>
+        <button class="btn secundario" id="pn-limpar">Limpar filtros</button>
       </div>
     </div>
   `;
@@ -242,6 +243,13 @@ function montarPainel(){
       convenio_id: document.getElementById('pn-convenio').value,
       prestador_id: document.getElementById('pn-prestador').value,
     };
+    painelSubaba = 'pendente';
+    buscarPainel();
+  });
+
+  document.getElementById('pn-limpar').addEventListener('click', () => {
+    const hoje = new Date();
+    painelFiltro = { competencia: `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`, convenio_id: '', prestador_id: '' };
     painelSubaba = 'pendente';
     buscarPainel();
   });
@@ -322,7 +330,7 @@ function renderPainelLinhas(){
 
   alvo.querySelectorAll('[data-lancar]').forEach(btn => btn.addEventListener('click', (e) => {
     e.preventDefault();
-    abrirFormLancamento(painelLinhasCache[Number(btn.dataset.lancar)], 'painel-lancamento', async () => {
+    abrirFormLancamento(painelLinhasCache[Number(btn.dataset.lancar)], async () => {
       await buscarPainel();
     });
   }));
@@ -361,12 +369,16 @@ async function marcarComoFaturado(linhas){
   }
 }
 
-function abrirFormLancamento(linha, alvoId, aoSalvar){
-  const painel = document.getElementById(alvoId || 'painel-lancamento');
+function abrirModal(){ document.getElementById('modal-fundo').hidden = false; }
+function fecharModal(){ document.getElementById('modal-fundo').hidden = true; document.getElementById('modal-conteudo').innerHTML = ''; }
+document.getElementById('modal-fundo').addEventListener('click', (e) => { if (e.target.id === 'modal-fundo') fecharModal(); });
+
+function abrirFormLancamento(linha, aoSalvar){
+  const painel = document.getElementById('modal-conteudo');
   const salvarDepois = aoSalvar || buscarPainel;
   const mostraProtocolo = linha.status !== 'pendente';
   painel.innerHTML = `
-    <div class="cartao" style="background:#F8FAFC;">
+    <div class="cartao">
       <h2>${escapeHtml(linha.convenio_nome)} · ${escapeHtml(linha.prestador_nome)} · ${linha.tipo} · ${formatarCompetencia(linha.competencia)}</h2>
       <div class="linha-form">
         <div class="campo"><label>Status</label>
@@ -391,12 +403,12 @@ function abrirFormLancamento(linha, alvoId, aoSalvar){
       <div class="erro-login" id="lf-erro"></div>
     </div>
   `;
-  painel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  abrirModal();
   aplicarMascaraMoeda(document.getElementById('lf-valor'));
   document.getElementById('lf-status').addEventListener('change', (e) => {
     document.getElementById('lf-protocolo-wrap').hidden = e.target.value === 'pendente';
   });
-  document.getElementById('lf-cancelar').addEventListener('click', () => { painel.innerHTML = ''; });
+  document.getElementById('lf-cancelar').addEventListener('click', fecharModal);
 
   async function salvar(statusForcado){
     const corpo = {
@@ -414,7 +426,7 @@ function abrirFormLancamento(linha, alvoId, aoSalvar){
     };
     try{
       await api('/faturamentos', { method: 'POST', body: JSON.stringify(corpo) });
-      painel.innerHTML = '';
+      fecharModal();
       await salvarDepois();
     }catch(err){ document.getElementById('lf-erro').textContent = err.message; }
   }
