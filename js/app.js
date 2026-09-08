@@ -176,16 +176,20 @@ function renderPainelLinhas(){
     porTipo.get(l.tipo).push(l);
   }
   const tipos = [...porTipo.keys()].sort((a, b) => ORDEM_TIPO.indexOf(a) - ORDEM_TIPO.indexOf(b));
-  const mostrarPeriodo = painelSubaba !== 'pendente';
 
   let html = '<div class="grade-tipos">';
   for (const tipo of tipos){
     const grupo = porTipo.get(tipo);
     html += `<div class="cartao"><h2>${tipo} (${grupo.length})</h2>`;
-    html += `<table><thead><tr><th>Convênio</th><th>Prestador</th>${mostrarPeriodo ? '<th>Período</th>' : ''}</tr></thead><tbody>`;
+    html += '<table><thead><tr><th>Convênio</th><th>Prestador</th><th>Competência</th><th>Status</th><th>Observação</th></tr></thead><tbody>';
     for (const l of grupo){
-      const periodo = mostrarPeriodo ? `<td>${formatarPeriodo(l.mes_completo, l.faturado_de, l.faturado_ate)}</td>` : '';
-      html += `<tr><td>${escapeHtml(l.convenio_nome)}</td><td>${escapeHtml(l.prestador_nome)}</td>${periodo}</tr>`;
+      html += `<tr>
+        <td>${escapeHtml(l.convenio_nome)}</td>
+        <td>${escapeHtml(l.prestador_nome)}</td>
+        <td>${l.competencia}</td>
+        <td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td>
+        <td>${escapeHtml(l.observacao || '—')}</td>
+      </tr>`;
     }
     html += '</tbody></table></div>';
   }
