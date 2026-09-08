@@ -119,31 +119,39 @@ function montarNav(usuario){
 function abrirAba(id){
   document.querySelectorAll('#nav-abas button').forEach(btn => btn.classList.toggle('ativa', btn.dataset.aba === id));
   ABAS[id].render();
-  carregarBarraLembretes();
+  // A aba "painel" já busca /dashboard sozinha (buscarPainel) e usa a
+  // mesma resposta pra preencher a barra -- evita pedir os mesmos dados
+  // duas vezes de uma vez só.
+  if (id !== 'painel') carregarBarraLembretes();
+}
+
+function preencherBarraLembretes(data){
+  const barra = document.getElementById('barra-lembretes');
+  if (!barra) return;
+  let html = '<h3>Prazos chegando</h3>';
+  if (!data.prazos_proximos.length){
+    html += '<div class="vazio">Nenhum prazo próximo.</div>';
+  }else{
+    for (const c of data.prazos_proximos){
+      html += `<div class="item-lembrete"><div class="titulo">${escapeHtml(c.nome)}</div><div class="detalhe">${c.dias_restantes === 0 ? 'fecha hoje' : 'fecha em ' + c.dias_restantes + ' dia(s)'}</div></div>`;
+    }
+  }
+  html += '<h3>Mais pendências</h3>';
+  if (!data.ranking_pendencias.length){
+    html += '<div class="vazio">Nada pendente.</div>';
+  }else{
+    for (const r of data.ranking_pendencias){
+      html += `<div class="item-lembrete"><div class="titulo">${escapeHtml(r.prestador_nome)}</div><div class="detalhe">${r.total} pendência(s)</div></div>`;
+    }
+  }
+  barra.innerHTML = html;
 }
 
 async function carregarBarraLembretes(){
   const barra = document.getElementById('barra-lembretes');
   if (!barra) return;
   try{
-    const data = await api('/dashboard');
-    let html = '<h3>Prazos chegando</h3>';
-    if (!data.prazos_proximos.length){
-      html += '<div class="vazio">Nenhum prazo próximo.</div>';
-    }else{
-      for (const c of data.prazos_proximos){
-        html += `<div class="item-lembrete"><div class="titulo">${escapeHtml(c.nome)}</div><div class="detalhe">${c.dias_restantes === 0 ? 'fecha hoje' : 'fecha em ' + c.dias_restantes + ' dia(s)'}</div></div>`;
-      }
-    }
-    html += '<h3>Mais pendências</h3>';
-    if (!data.ranking_pendencias.length){
-      html += '<div class="vazio">Nada pendente.</div>';
-    }else{
-      for (const r of data.ranking_pendencias){
-        html += `<div class="item-lembrete"><div class="titulo">${escapeHtml(r.prestador_nome)}</div><div class="detalhe">${r.total} pendência(s)</div></div>`;
-      }
-    }
-    barra.innerHTML = html;
+    preencherBarraLembretes(await api('/dashboard'));
   }catch(err){
     barra.innerHTML = '';
   }
@@ -199,6 +207,7 @@ async function buscarPainel(){
   if (painelFiltro.convenio_id) params.set('convenio_id', painelFiltro.convenio_id);
   if (painelFiltro.prestador_id) params.set('prestador_id', painelFiltro.prestador_id);
   painelDados = await api('/dashboard?' + params.toString());
+  preencherBarraLembretes(painelDados);
   montarPainel();
 }
 
@@ -206,14 +215,25 @@ function montarPainel(){
   const cont = document.getElementById('conteudo');
   const data = painelDados;
   let html = `<h1>Controle de faturamento</h1><p class="subtitulo">Competência ${formatarCompetencia(data.competencia)}</p>`;
+  const contagens = { pendente: 0, enviado_falta_anexo: 0, faturado: 0 };
+  for (const l of data.faturamentos) contagens[l.status] = (contagens[l.status] || 0) + 1;
+
   html += `
     <div class="cartao">
-      <div class="filtros">
-        <div class="campo"><label>Competência</label><input type="month" id="pn-competencia" value="${painelFiltro.competencia}"></div>
-        <div class="campo"><label>Convênio</label><select id="pn-convenio"><option value="">Todos</option>${painelConvenios.map(c => `<option value="${c.id}" ${String(c.id) === String(painelFiltro.convenio_id) ? 'selected' : ''}>${escapeHtml(c.nome)}</option>`).join('')}</select></div>
-        <div class="campo"><label>Prestador</label><select id="pn-prestador"><option value="">Todos</option>${painelPrestadores.map(p => `<option value="${p.id}" ${String(p.id) === String(painelFiltro.prestador_id) ? 'selected' : ''}>${escapeHtml(p.nome)}</option>`).join('')}</select></div>
-        <button class="btn" id="pn-filtrar">Filtrar</button>
-        <button class="btn secundario" id="pn-limpar">Limpar filtros</button>
+      <div class="linha-filtro-kpi">
+        <div class="filtros">
+          <div class="campo"><label>Competência</label><input type="month" id="pn-competencia" value="${painelFiltro.competencia}"></div>
+          <div class="campo"><label>Convênio</label><select id="pn-convenio"><option value="">Todos</option>${painelConvenios.map(c => `<option value="${c.id}" ${String(c.id) === String(painelFiltro.convenio_id) ? 'selected' : ''}>${escapeHtml(c.nome)}</option>`).join('')}</select></div>
+          <div class="campo"><label>Prestador</label><select id="pn-prestador"><option value="">Todos</option>${painelPrestadores.map(p => `<option value="${p.id}" ${String(p.id) === String(painelFiltro.prestador_id) ? 'selected' : ''}>${escapeHtml(p.nome)}</option>`).join('')}</select></div>
+          <button class="btn" id="pn-filtrar">Filtrar</button>
+          <button class="btn secundario" id="pn-limpar">Limpar filtros</button>
+        </div>
+        <div class="grade-kpi compacta" id="painel-kpis">
+          ${PAINEL_ABAS.map(aba => `<div class="kpi compacto cor-${aba.id} ${painelSubaba === aba.id ? 'ativa' : ''}" data-sub="${aba.id}">
+            <div class="rotulo">${aba.label}</div>
+            <div class="numero">${contagens[aba.id] || 0}</div>
+          </div>`).join('')}
+        </div>
       </div>
     </div>
   `;
@@ -225,17 +245,7 @@ function montarPainel(){
     html += '</div>';
   }
 
-  const contagens = { pendente: 0, enviado_falta_anexo: 0, faturado: 0 };
-  for (const l of data.faturamentos) contagens[l.status] = (contagens[l.status] || 0) + 1;
-
-  html += '<div class="grade-kpi" id="painel-kpis">';
-  for (const aba of PAINEL_ABAS){
-    html += `<div class="kpi cor-${aba.id} ${painelSubaba === aba.id ? 'ativa' : ''}" data-sub="${aba.id}">
-      <div class="rotulo">${aba.label}</div>
-      <div class="numero">${contagens[aba.id] || 0}</div>
-    </div>`;
-  }
-  html += '</div><div id="painel-lancamento"></div><div id="painel-subconteudo"></div>';
+  html += '<div id="painel-lancamento"></div><div id="painel-subconteudo"></div>';
   cont.innerHTML = html;
 
   document.getElementById('pn-filtrar').addEventListener('click', () => {

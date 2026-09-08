@@ -185,6 +185,24 @@ main{
 .kpi .rotulo{ font-size: 12px; color: var(--muted); margin-bottom: 8px; font-weight: 500; }
 .kpi .numero{ font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .kpi.ativa{ border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue), var(--sombra); }
+
+.linha-filtro-kpi{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.linha-filtro-kpi .filtros{ margin-bottom: 0; flex: 1; }
+.grade-kpi.compacta{
+  grid-template-columns: repeat(3, minmax(100px, auto));
+  gap: 10px;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+.kpi.compacto{ padding: 10px 14px; }
+.kpi.compacto .rotulo{ font-size: 11px; margin-bottom: 4px; white-space: nowrap; }
+.kpi.compacto .numero{ font-size: 19px; }
 .kpi.cor-pendente .numero{ color: var(--warning); }
 .kpi.cor-enviado_falta_anexo .numero{ color: var(--blue); }
 .kpi.cor-faturado .numero{ color: var(--success); }

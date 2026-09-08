@@ -15,6 +15,15 @@ async function ensureSchema(){
   // deixar guardada pra sempre, senão uma falha passageira deixa toda
   // invocação seguinte dessa mesma instância quente retornando erro 500.
   schemaReady = (async () => {
+    // Rodar as ~30 CREATE/ALTER toda vez que uma instância "fria" do
+    // serverless recebe a primeira requisição é caro (cada um é um round-trip
+    // pro banco). Se a última coluna que essa versão do código adiciona já
+    // existe, o resto com certeza também já rodou antes -- pula tudo e
+    // economiza esses round-trips no caminho comum. Só funciona se toda
+    // migração nova for sempre adicionada no FINAL desta sequência.
+    const jaMigrado = await db`SELECT 1 FROM information_schema.columns WHERE table_name = 'faturamentos_historico' AND column_name = 'faturado_de'`;
+    if (jaMigrado.length) return;
+
     await db`CREATE TABLE IF NOT EXISTS usuarios (
       id SERIAL PRIMARY KEY,
       login VARCHAR(60) UNIQUE NOT NULL,
