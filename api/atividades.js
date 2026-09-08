@@ -52,7 +52,7 @@ module.exports = async (req, res) => {
 
     const usuarios = [...porUsuario.values()].map(u => {
       const porMes = [...u.porMes.entries()]
-        .map(([mes, itens]) => ({ mes, total: itens.length, itens: itens.sort((a, b) => b.criado_em.localeCompare(a.criado_em)) }))
+        .map(([mes, itens]) => ({ mes, total: itens.length, itens: itens.sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em)) }))
         .sort((a, b) => a.mes.localeCompare(b.mes));
       return {
         usuario_id: u.usuario_id,
