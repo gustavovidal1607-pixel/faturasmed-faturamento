@@ -65,24 +65,34 @@ module.exports = async (req, res) => {
       const escopo = await escopoDoUsuario(usuario);
       if (!paresIncluem(escopo, vinculo.prestador_id, vinculo.convenio_id)){ res.status(403).json({ erro: 'Você não tem acesso a esse vínculo.' }); return; }
 
-      const { login_portal, senha_portal, particularidades, ativo } = req.body || {};
-      if (ativo !== undefined && !ehAdmin(usuario)){ res.status(403).json({ erro: 'Só o administrador ativa/desativa vínculos.' }); return; }
+      const { prestador_id, convenio_id, login_portal, senha_portal, particularidades, ativo } = req.body || {};
+      if ((ativo !== undefined || prestador_id !== undefined || convenio_id !== undefined) && !ehAdmin(usuario)){
+        res.status(403).json({ erro: 'Só o administrador altera prestador, convênio ou status do vínculo.' });
+        return;
+      }
 
       let cifra = { senha_cifrada: vinculo.senha_cifrada, senha_iv: vinculo.senha_iv, senha_auth_tag: vinculo.senha_auth_tag };
       if (senha_portal !== undefined) cifra = senha_portal ? cifrar(senha_portal) : { senha_cifrada: null, senha_iv: null, senha_auth_tag: null };
 
-      const result = await db`
-        UPDATE vinculos SET
-          login_portal = COALESCE(${login_portal ?? null}, login_portal),
-          senha_cifrada = ${cifra.senha_cifrada},
-          senha_iv = ${cifra.senha_iv},
-          senha_auth_tag = ${cifra.senha_auth_tag},
-          particularidades = COALESCE(${particularidades ?? null}, particularidades),
-          ativo = COALESCE(${ativo ?? null}, ativo)
-        WHERE id = ${id}
-        RETURNING *
-      `;
-      res.status(200).json({ vinculo: comSenhaDecifrada(result[0]) });
+      try{
+        const result = await db`
+          UPDATE vinculos SET
+            prestador_id = COALESCE(${prestador_id ?? null}, prestador_id),
+            convenio_id = COALESCE(${convenio_id ?? null}, convenio_id),
+            login_portal = COALESCE(${login_portal ?? null}, login_portal),
+            senha_cifrada = ${cifra.senha_cifrada},
+            senha_iv = ${cifra.senha_iv},
+            senha_auth_tag = ${cifra.senha_auth_tag},
+            particularidades = COALESCE(${particularidades ?? null}, particularidades),
+            ativo = COALESCE(${ativo ?? null}, ativo)
+          WHERE id = ${id}
+          RETURNING *
+        `;
+        res.status(200).json({ vinculo: comSenhaDecifrada(result[0]) });
+      }catch(err){
+        if (err.code === '23505'){ res.status(409).json({ erro: 'Esse prestador já está vinculado a esse convênio.' }); return; }
+        throw err;
+      }
       return;
     }
 

@@ -617,6 +617,7 @@ async function renderVinculos(){
       <button class="btn" id="vc-criar">Vincular</button>
       <div class="erro-login" id="vc-erro"></div>
     </div>
+    <div id="vinculo-edicao"></div>
     <div class="cartao">
       <table><thead><tr><th>Prestador</th><th>Convênio</th><th>Login</th><th>Particularidades</th><th>Status</th><th></th></tr></thead><tbody>
         ${vinculos.map(v => `
@@ -634,7 +635,6 @@ async function renderVinculos(){
         `).join('')}
       </tbody></table>
     </div>
-    <div id="vinculo-edicao"></div>
   `;
 
   document.getElementById('vc-criar').addEventListener('click', async () => {
@@ -663,7 +663,12 @@ async function renderVinculos(){
     const painel = document.getElementById('vinculo-edicao');
     painel.innerHTML = `
       <div class="cartao" style="background:#F8FAFC;">
-        <h2>Editar vínculo: ${escapeHtml(v.prestador_nome)} · ${escapeHtml(v.convenio_nome)}</h2>
+        <h2>Editar vínculo</h2>
+        <div class="linha-form">
+          <div class="campo"><label>Prestador</label><select id="ve-prestador">${prestadores.map(p => `<option value="${p.id}" ${p.id === v.prestador_id ? 'selected' : ''}>${escapeHtml(p.nome)}</option>`).join('')}</select></div>
+          <div class="campo"><label>Convênio</label><select id="ve-convenio">${convenios.map(c => `<option value="${c.id}" ${c.id === v.convenio_id ? 'selected' : ''}>${escapeHtml(c.nome)}</option>`).join('')}</select></div>
+          <div class="campo"><label>Status</label><select id="ve-ativo"><option value="true" ${v.ativo ? 'selected' : ''}>Ativo</option><option value="false" ${!v.ativo ? 'selected' : ''}>Desativado</option></select></div>
+        </div>
         <div class="linha-form">
           <div class="campo"><label>Login do portal</label><input type="text" id="ve-login" value="${escapeHtml(v.login_portal || '')}"></div>
           <div class="campo"><label>Senha do portal</label><input type="text" id="ve-senha" value="${escapeHtml(v.senha_portal || '')}"></div>
@@ -676,10 +681,14 @@ async function renderVinculos(){
         <div class="erro-login" id="ve-erro"></div>
       </div>
     `;
+    painel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     document.getElementById('ve-cancelar').addEventListener('click', () => { painel.innerHTML = ''; });
     document.getElementById('ve-salvar').addEventListener('click', async () => {
       try{
         await api(`/vinculos?id=${v.id}`, { method: 'PATCH', body: JSON.stringify({
+          prestador_id: Number(document.getElementById('ve-prestador').value),
+          convenio_id: Number(document.getElementById('ve-convenio').value),
+          ativo: document.getElementById('ve-ativo').value === 'true',
           login_portal: document.getElementById('ve-login').value.trim() || null,
           senha_portal: document.getElementById('ve-senha').value || null,
           particularidades: document.getElementById('ve-particularidades').value.trim() || null,
