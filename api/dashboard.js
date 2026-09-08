@@ -32,11 +32,36 @@ module.exports = async (req, res) => {
     const convenioId = req.query && req.query.convenio_id ? Number(req.query.convenio_id) : null;
     const prestadorId = req.query && req.query.prestador_id ? Number(req.query.prestador_id) : null;
 
-    // Consolidado numa chamada só (em vez de 3 separadas: dashboard,
-    // convenios, prestadores) pra reduzir o número de conexões frias
-    // simultâneas logo na abertura da tela.
-    let todosConvenios = await db`SELECT * FROM convenios WHERE ativo = true ORDER BY nome`;
-    let todosPrestadores = await db`SELECT * FROM prestadores WHERE ativo = true ORDER BY nome`;
+    const competenciaReal = competenciaAtual();
+
+    // Nenhuma dessas 5 consultas depende do resultado de outra (só do
+    // escopo, já resolvido acima) -- dispara todas de uma vez em vez de
+    // esperar uma pra pedir a próxima, senão cada round-trip extra pro
+    // Neon soma direto no tempo de abertura da tela.
+    const [todosConveniosRaw, todosPrestadoresRaw, linhas, protocolosFaturadosMesRaw, protocolosFaltaAnexoRaw] = await Promise.all([
+      db`SELECT * FROM convenios WHERE ativo = true ORDER BY nome`,
+      db`SELECT * FROM prestadores WHERE ativo = true ORDER BY nome`,
+      listarLinhas({ competencia, escopo, convenioId, prestadorId }),
+      db`
+        SELECT f.prestador_id, COUNT(*) AS quantidade
+        FROM faturamentos_protocolos p
+        JOIN faturamentos f ON f.id = p.faturamento_id
+        WHERE p.status = 'faturado' AND f.competencia = ${competenciaReal}
+        GROUP BY f.prestador_id
+      `,
+      db`
+        SELECT p.protocolo, p.data, p.criado_em, f.prestador_id, f.convenio_id, f.tipo,
+               pr.nome AS prestador_nome, c.nome AS convenio_nome
+        FROM faturamentos_protocolos p
+        JOIN faturamentos f ON f.id = p.faturamento_id
+        JOIN prestadores pr ON pr.id = f.prestador_id
+        JOIN convenios c ON c.id = f.convenio_id
+        WHERE p.status = 'enviado_falta_anexo'
+      `,
+    ]);
+
+    let todosConvenios = todosConveniosRaw;
+    let todosPrestadores = todosPrestadoresRaw;
     if (escopo !== null){
       const conveniosDoEscopo = new Set(escopo.map(e => e.convenio_id));
       const prestadoresDoEscopo = new Set(escopo.map(e => e.prestador_id));
@@ -50,7 +75,6 @@ module.exports = async (req, res) => {
       .filter(c => c.dias_restantes >= 0 && c.dias_restantes <= DIAS_ALERTA_PRAZO)
       .sort((a, b) => a.dias_restantes - b.dias_restantes);
 
-    const linhas = await listarLinhas({ competencia, escopo, convenioId, prestadorId });
     const pendentes = linhas.filter(l => l.status !== 'faturado');
 
     const porPrestador = new Map();
@@ -63,18 +87,11 @@ module.exports = async (req, res) => {
       .sort((a, b) => b.total - a.total)
       .slice(0, MAX_RANKING_PENDENCIAS);
 
-    // Quantos protocolos já foram marcados "faturado" na competência
-    // atual de verdade (mês corrente, não a competência que porventura
-    // esteja sendo filtrada na tela) -- mostrado ao lado do nome do
-    // prestador, sempre baseado na data de hoje.
-    const competenciaReal = competenciaAtual();
-    let protocolosFaturadosMes = await db`
-      SELECT f.prestador_id, COUNT(*) AS quantidade
-      FROM faturamentos_protocolos p
-      JOIN faturamentos f ON f.id = p.faturamento_id
-      WHERE p.status = 'faturado' AND f.competencia = ${competenciaReal}
-      GROUP BY f.prestador_id
-    `;
+    // Quantos protocolos já foram marcados "faturado" na competência atual
+    // de verdade (mês corrente, não a competência que porventura esteja
+    // sendo filtrada na tela) -- mostrado ao lado do nome do prestador,
+    // sempre baseado na data de hoje.
+    let protocolosFaturadosMes = protocolosFaturadosMesRaw;
     if (escopo !== null){
       const prestadoresNoEscopo = new Set(escopo.map(e => e.prestador_id));
       protocolosFaturadosMes = protocolosFaturadosMes.filter(r => prestadoresNoEscopo.has(r.prestador_id));
@@ -84,15 +101,7 @@ module.exports = async (req, res) => {
     // enviar o protocolo -- conta a partir da data informada no protocolo
     // (ou de quando foi criado, se a data não foi preenchida). Mostra os
     // que estão perto de vencer (ou já vencidos) pra virar alerta.
-    let protocolosFaltaAnexo = await db`
-      SELECT p.protocolo, p.data, p.criado_em, f.prestador_id, f.convenio_id, f.tipo,
-             pr.nome AS prestador_nome, c.nome AS convenio_nome
-      FROM faturamentos_protocolos p
-      JOIN faturamentos f ON f.id = p.faturamento_id
-      JOIN prestadores pr ON pr.id = f.prestador_id
-      JOIN convenios c ON c.id = f.convenio_id
-      WHERE p.status = 'enviado_falta_anexo'
-    `;
+    let protocolosFaltaAnexo = protocolosFaltaAnexoRaw;
     if (escopo !== null){
       const prestadoresNoEscopo = new Set(escopo.map(e => e.prestador_id));
       protocolosFaltaAnexo = protocolosFaltaAnexo.filter(p => prestadoresNoEscopo.has(p.prestador_id));

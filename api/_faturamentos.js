@@ -7,14 +7,20 @@ const { sql } = require('./_db.js');
 // Painel.
 async function listarLinhas({ competencia, escopo, convenioId, prestadorId, status }){
   const db = sql();
-  let vinculos = await db`
-    SELECT v.id AS vinculo_id, v.prestador_id, v.convenio_id, p.nome AS prestador_nome, c.nome AS convenio_nome
-    FROM vinculos v
-    JOIN prestadores p ON p.id = v.prestador_id
-    JOIN convenios c ON c.id = v.convenio_id
-    WHERE v.ativo = true AND p.ativo = true AND c.ativo = true
-    ORDER BY c.nome, p.nome
-  `;
+  // vinculos e lancamentos não dependem um do outro -- dispara os dois de
+  // uma vez em vez de esperar um pra só então pedir o outro (cada round-trip
+  // pro Neon custa dezenas/centenas de ms, e essa tela soma vários).
+  let [vinculos, lancamentos] = await Promise.all([
+    db`
+      SELECT v.id AS vinculo_id, v.prestador_id, v.convenio_id, p.nome AS prestador_nome, c.nome AS convenio_nome
+      FROM vinculos v
+      JOIN prestadores p ON p.id = v.prestador_id
+      JOIN convenios c ON c.id = v.convenio_id
+      WHERE v.ativo = true AND p.ativo = true AND c.ativo = true
+      ORDER BY c.nome, p.nome
+    `,
+    db`SELECT * FROM faturamentos WHERE competencia = ${competencia}`,
+  ]);
   if (escopo !== null){
     const chaves = new Set(escopo.map(e => `${e.prestador_id}:${e.convenio_id}`));
     vinculos = vinculos.filter(v => chaves.has(`${v.prestador_id}:${v.convenio_id}`));
@@ -22,37 +28,35 @@ async function listarLinhas({ competencia, escopo, convenioId, prestadorId, stat
   if (convenioId) vinculos = vinculos.filter(v => v.convenio_id === convenioId);
   if (prestadorId) vinculos = vinculos.filter(v => v.prestador_id === prestadorId);
 
-  const idsVinculos = vinculos.map(v => v.vinculo_id);
-  const tiposPorVinculo = new Map(); // vinculo_id -> [{ tipo, particularidades }]
-  if (idsVinculos.length){
-    const tiposRows = await db`
-      SELECT vinculo_id, tipo, particularidades FROM vinculos_tipos
-      WHERE vinculo_id = ANY(${idsVinculos})
-      ORDER BY tipo
-    `;
-    for (const t of tiposRows){
-      if (!tiposPorVinculo.has(t.vinculo_id)) tiposPorVinculo.set(t.vinculo_id, []);
-      tiposPorVinculo.get(t.vinculo_id).push(t);
-    }
-  }
-
-  const lancamentos = await db`SELECT * FROM faturamentos WHERE competencia = ${competencia}`;
   const porChave = new Map(lancamentos.map(l => [`${l.convenio_id}:${l.prestador_id}:${l.tipo}`, l]));
-
+  const idsVinculos = vinculos.map(v => v.vinculo_id);
   const idsLancamentos = lancamentos.map(l => l.id);
-  const resumoProtocolos = new Map(); // faturamento_id -> { quantidade, faturados, total }
-  if (idsLancamentos.length){
-    const agregados = await db`
-      SELECT faturamento_id,
-             COUNT(*) AS quantidade,
-             COUNT(*) FILTER (WHERE status = 'faturado') AS faturados,
-             SUM(valor) AS total
-      FROM faturamentos_protocolos
-      WHERE faturamento_id = ANY(${idsLancamentos})
-      GROUP BY faturamento_id
-    `;
-    for (const a of agregados) resumoProtocolos.set(a.faturamento_id, { quantidade: Number(a.quantidade), faturados: Number(a.faturados), total: a.total });
+
+  // Idem aqui: os tipos de cada vínculo e o resumo de protocolos de cada
+  // lançamento também são independentes entre si.
+  const [tiposRows, agregados] = await Promise.all([
+    idsVinculos.length
+      ? db`SELECT vinculo_id, tipo, particularidades FROM vinculos_tipos WHERE vinculo_id = ANY(${idsVinculos}) ORDER BY tipo`
+      : [],
+    idsLancamentos.length
+      ? db`
+          SELECT faturamento_id,
+                 COUNT(*) AS quantidade,
+                 COUNT(*) FILTER (WHERE status = 'faturado') AS faturados,
+                 SUM(valor) AS total
+          FROM faturamentos_protocolos
+          WHERE faturamento_id = ANY(${idsLancamentos})
+          GROUP BY faturamento_id
+        `
+      : [],
+  ]);
+  const tiposPorVinculo = new Map(); // vinculo_id -> [{ tipo, particularidades }]
+  for (const t of tiposRows){
+    if (!tiposPorVinculo.has(t.vinculo_id)) tiposPorVinculo.set(t.vinculo_id, []);
+    tiposPorVinculo.get(t.vinculo_id).push(t);
   }
+  const resumoProtocolos = new Map(); // faturamento_id -> { quantidade, faturados, total }
+  for (const a of agregados) resumoProtocolos.set(a.faturamento_id, { quantidade: Number(a.quantidade), faturados: Number(a.faturados), total: a.total });
 
   let linhas = [];
   for (const v of vinculos){
