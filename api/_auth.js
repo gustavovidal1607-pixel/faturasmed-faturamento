@@ -4,7 +4,7 @@ const { sql } = require('./_db.js');
 // Trocar pelo login que o Gustavo vai usar antes do primeiro deploy (ver
 // README). Depois desse primeiro login, só um administrador já existente
 // consegue criar outras contas, pela aba Usuários.
-const ADMIN_BOOTSTRAP_LOGIN = 'gustavo';
+const ADMIN_BOOTSTRAP_LOGIN = 'Adm';
 
 async function usuarioDaSessao(req){
   const auth = req.headers['authorization'] || '';
