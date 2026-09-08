@@ -1,10 +1,22 @@
 const API = '/api';
 
+const TEMPO_LIMITE_MS = 15000;
+
 async function api(path, opts = {}){
   const token = localStorage.getItem('token');
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   if (token) headers['Authorization'] = 'Bearer ' + token;
-  const res = await fetch(API + path, { ...opts, headers });
+  const controlador = new AbortController();
+  const limite = setTimeout(() => controlador.abort(), TEMPO_LIMITE_MS);
+  let res;
+  try{
+    res = await fetch(API + path, { ...opts, headers, signal: controlador.signal });
+  }catch(err){
+    if (err.name === 'AbortError') throw new Error('A resposta demorou demais. Verifique sua conexão e tente de novo.');
+    throw new Error('Não foi possível conectar ao servidor. Verifique sua conexão e tente de novo.');
+  }finally{
+    clearTimeout(limite);
+  }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401){
     localStorage.removeItem('token');
@@ -1038,10 +1050,11 @@ function carregarChartJs(){
   if (window.Chart) return Promise.resolve();
   if (!chartJsPromise){
     chartJsPromise = new Promise((resolve, reject) => {
+      const limite = setTimeout(() => { chartJsPromise = null; reject(new Error('A biblioteca de gráficos demorou demais pra carregar (verifique a conexão).')); }, TEMPO_LIMITE_MS);
       const script = document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js';
-      script.onload = () => resolve();
-      script.onerror = () => { chartJsPromise = null; reject(new Error('Não foi possível carregar a biblioteca de gráficos (verifique a conexão).')); };
+      script.onload = () => { clearTimeout(limite); resolve(); };
+      script.onerror = () => { clearTimeout(limite); chartJsPromise = null; reject(new Error('Não foi possível carregar a biblioteca de gráficos (verifique a conexão).')); };
       document.head.appendChild(script);
     });
   }
