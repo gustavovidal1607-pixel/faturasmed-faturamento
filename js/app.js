@@ -301,7 +301,12 @@ function renderPainelLinhas(){
   `;
   for (const [convenioId, conv] of conveniosOrdenados){
     const totalConvenio = [...conv.prestadores.values()].reduce((s, p) => s + p.idxs.length, 0);
-    html += `<div class="cartao"><h2>${escapeHtml(conv.nome)} <span class="resumo">· ${totalConvenio} lançamento(s)</span></h2>`;
+    html += `<details class="cartao expansivel">
+      <summary>
+        <span class="nome-prestador">${escapeHtml(conv.nome)}</span>
+        <span class="resumo">${totalConvenio} lançamento(s) · ${conv.prestadores.size} prestador(es)</span>
+      </summary>
+      <div class="conteudo-cartao">`;
     const prestadoresOrdenados = [...conv.prestadores.entries()].sort((a, b) => a[1].nome.localeCompare(b[1].nome));
     for (const [prestadorId, grupo] of prestadoresOrdenados){
       const chaveGrupo = `${convenioId}-${prestadorId}`;
@@ -332,7 +337,7 @@ function renderPainelLinhas(){
       }
       html += '</tbody></table></div></details>';
     }
-    html += '</div>';
+    html += '</div></details>';
   }
   alvo.innerHTML = html;
 

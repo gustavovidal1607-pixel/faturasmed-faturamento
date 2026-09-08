@@ -248,7 +248,7 @@ main{
   flex-shrink: 0;
 }
 .grupo-prestador[open] summary::before{ transform: rotate(90deg); }
-.grupo-prestador summary .nome-prestador{ font-weight: 600; }
+.nome-prestador{ font-weight: 600; }
 .resumo{ color: var(--muted); font-size: 12px; font-weight: 400; }
 .grupo-prestador .conteudo-grupo{ padding: 4px 16px 14px; border-top: 1px solid var(--border); }
 
@@ -273,6 +273,31 @@ h3{ font-size: 13px; font-weight: 600; margin: 0 0 10px; color: var(--text); }
   align-items: start;
 }
 .grade-tipos .cartao{ margin-bottom: 0; }
+
+/* ---- Card expansível (ex: convênio no Controle de faturamento) ---- */
+.cartao.expansivel{ padding: 0; }
+.cartao.expansivel > summary{
+  list-style: none;
+  cursor: pointer;
+  padding: 18px 22px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  user-select: none;
+  border-radius: 12px;
+}
+.cartao.expansivel > summary:hover{ background: #FAFBFC; }
+.cartao.expansivel > summary::-webkit-details-marker{ display: none; }
+.cartao.expansivel > summary::before{
+  content: '▸';
+  color: var(--muted);
+  transition: transform 0.15s;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.cartao.expansivel[open] > summary::before{ transform: rotate(90deg); }
+.cartao.expansivel[open] > summary{ border-radius: 12px 12px 0 0; border-bottom: 1px solid var(--border); }
+.cartao.expansivel .conteudo-cartao{ padding: 18px 22px 22px; }
 
 .subabas{
   display: flex;
