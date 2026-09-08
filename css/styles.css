@@ -211,13 +211,12 @@ main{
 .kpi.cor-finalizada .numero{ color: var(--success); }
 
 /* ---- Linhas expansíveis por prestador ---- */
-.barra-lote{
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
+.tipo-clicavel{
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.barra-lote .contagem{ font-size: 13px; color: var(--muted); }
+.tipo-clicavel:hover{ border-color: var(--blue); }
+.tipo-clicavel h2{ display: flex; align-items: center; gap: 8px; }
 
 .grupo-prestador{
   border: 1px solid var(--border);

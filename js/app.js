@@ -78,13 +78,6 @@ function formatarCompetencia(comp){
 }
 const ROTULOS_STATUS = { pendente: 'Pendente', enviado_falta_anexo: 'Enviado - falta anexo', faturado: 'Faturado' };
 function rotuloStatus(status){ return ROTULOS_STATUS[status] || status; }
-function formatarPeriodo(mesCompleto, de, ate){
-  if (mesCompleto) return 'Mês completo';
-  if (de && ate) return `De ${formatarData(de)} até ${formatarData(ate)}`;
-  if (de) return `A partir de ${formatarData(de)}`;
-  if (ate) return `Até ${formatarData(ate)}`;
-  return '—';
-}
 function usuarioAtual(){
   return JSON.parse(localStorage.getItem('usuario'));
 }
@@ -267,7 +260,7 @@ function montarPainel(){
     html += '</div>';
   }
 
-  html += '<div id="painel-lancamento"></div><div id="painel-subconteudo"></div>';
+  html += '<div id="painel-subconteudo"></div>';
   cont.innerHTML = html;
 
   document.getElementById('pn-filtrar').addEventListener('click', () => {
@@ -302,7 +295,7 @@ function renderPainelLinhas(){
   painelLinhasCache = linhas;
   if (!linhas.length){ alvo.innerHTML = '<div class="cartao"><div class="vazio">Nada aqui nessa competência.</div></div>'; return; }
 
-  // Hierarquia: Convênio (card) -> Prestador (grupo expansível) -> lançamentos.
+  // Hierarquia: Convênio (card) -> Prestador (grupo expansível) -> Tipo (card clicável).
   const porConvenio = new Map();
   linhas.forEach((l, idx) => {
     if (!porConvenio.has(l.convenio_id)) porConvenio.set(l.convenio_id, { nome: l.convenio_nome, prestadores: new Map() });
@@ -311,15 +304,8 @@ function renderPainelLinhas(){
     conv.prestadores.get(l.prestador_id).idxs.push(idx);
   });
   const conveniosOrdenados = [...porConvenio.entries()].sort((a, b) => a[1].nome.localeCompare(b[1].nome));
-  const mostrarProtocoloValor = painelSubaba !== 'pendente';
-  const podeMarcarFaturado = painelSubaba === 'enviado_falta_anexo';
 
-  let html = `
-    <div class="barra-lote">
-      <span class="contagem" id="pl-contagem">0 selecionado(s)</span>
-      ${podeMarcarFaturado ? '<button class="btn secundario pequeno" id="pl-marcar-lote">Marcar selecionados como Faturado</button>' : ''}
-    </div>
-  `;
+  let html = '';
   for (const [convenioId, conv] of conveniosOrdenados){
     const totalConvenio = [...conv.prestadores.values()].reduce((s, p) => s + p.idxs.length, 0);
     html += `<details class="cartao expansivel">
@@ -330,172 +316,67 @@ function renderPainelLinhas(){
       <div class="conteudo-cartao">`;
     const prestadoresOrdenados = [...conv.prestadores.entries()].sort((a, b) => a[1].nome.localeCompare(b[1].nome));
     for (const [prestadorId, grupo] of prestadoresOrdenados){
-      const chaveGrupo = `${convenioId}-${prestadorId}`;
-      const tipos = new Set(grupo.idxs.map(i => linhas[i].tipo));
       const protocolosMes = (painelDados.protocolos_faturados_mes || {})[prestadorId] || 0;
       html += `<details class="grupo-prestador">
         <summary>
-          <input type="checkbox" class="pl-check-grupo" data-grupo="${chaveGrupo}" onclick="event.stopPropagation()">
           <span class="nome-prestador">${escapeHtml(grupo.nome)}</span>
-          <span class="resumo">${grupo.idxs.length} lançamento(s) · ${tipos.size} tipo(s) · ${protocolosMes} protocolo(s) faturado(s) em ${formatarCompetencia(painelDados.competencia_atual)}</span>
+          <span class="resumo">${grupo.idxs.length} tipo(s) · ${protocolosMes} protocolo(s) faturado(s) em ${formatarCompetencia(painelDados.competencia_atual)}</span>
         </summary>
         <div class="conteudo-grupo">
-          <table><thead><tr><th></th><th>Competência</th><th>Tipo</th><th>Status</th>${mostrarProtocoloValor ? '<th>Protocolos</th>' : ''}<th>Observação</th><th></th></tr></thead><tbody>`;
+          <div class="grade-tipos">`;
       for (const idx of grupo.idxs){
         const l = linhas[idx];
-        const resumoProtocolos = l.protocolos_quantidade
-          ? `${l.protocolos_quantidade} protocolo(s)${l.protocolos_total != null ? ' · R$ ' + numeroParaMascaraMoeda(l.protocolos_total) : ''}`
-          : '—';
-        html += `<tr>
-          <td><input type="checkbox" class="pl-check" data-grupo="${chaveGrupo}" data-idx="${idx}"></td>
-          <td>${formatarCompetencia(l.competencia)}</td>
-          <td>${l.tipo}</td>
-          <td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td>
-          ${mostrarProtocoloValor ? `<td>${resumoProtocolos}</td>` : ''}
-          <td>${escapeHtml(l.observacao || '—')}</td>
-          <td class="acoes-linha">
-            <button class="btn pequeno" data-lancar="${idx}">Lançar</button>
-            ${l.status === 'enviado_falta_anexo' ? `<button class="btn secundario pequeno" data-marcar-faturado="${idx}">Marcar Faturado</button>` : ''}
-            ${l.faturamento_id ? `<button class="btn secundario pequeno" data-historico="${l.faturamento_id}">Histórico</button>` : ''}
-            ${l.faturamento_id ? `<button class="btn perigo pequeno" data-remover="${l.faturamento_id}">Remover</button>` : ''}
-          </td>
-        </tr>`;
+        html += `<div class="cartao tipo-clicavel" data-abrir-tipo="${idx}">
+          <h2>${l.tipo} <span class="selo ${l.status}">${rotuloStatus(l.status)}</span></h2>
+          <p class="subtitulo" style="margin:0;">${l.protocolos_faturados || 0} protocolo(s) faturado(s)${l.protocolos_quantidade ? ` de ${l.protocolos_quantidade} lançado(s)` : ''}${l.protocolos_total != null ? ' · R$ ' + numeroParaMascaraMoeda(l.protocolos_total) : ''}</p>
+          ${l.observacao ? `<p class="particularidade-txt" style="margin-top:8px;">${escapeHtml(l.observacao)}</p>` : ''}
+        </div>`;
       }
-      html += '</tbody></table></div></details>';
+      html += '</div></div></details>';
     }
     html += '</div></details>';
   }
   alvo.innerHTML = html;
 
-  function checksMarcados(){ return [...alvo.querySelectorAll('.pl-check:checked')]; }
-  function atualizarContagem(){
-    document.getElementById('pl-contagem').textContent = `${checksMarcados().length} selecionado(s)`;
-  }
-  alvo.querySelectorAll('.pl-check').forEach(chk => chk.addEventListener('change', atualizarContagem));
-  alvo.querySelectorAll('[data-historico]').forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); mostrarHistorico(Number(btn.dataset.historico)); }));
-  alvo.querySelectorAll('[data-remover]').forEach(btn => btn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    if (!confirm('Remover esse lançamento? Ele volta a ficar pendente e o histórico dele é apagado.')) return;
-    try{
-      await api(`/faturamentos?id=${btn.dataset.remover}`, { method: 'DELETE' });
-      await buscarPainel();
-    }catch(err){ alert(err.message); }
+  alvo.querySelectorAll('[data-abrir-tipo]').forEach(card => card.addEventListener('click', () => {
+    abrirProtocolosDoTipo(painelLinhasCache[Number(card.dataset.abrirTipo)]);
   }));
-  alvo.querySelectorAll('.pl-check-grupo').forEach(chkGrupo => chkGrupo.addEventListener('change', (e) => {
-    alvo.querySelectorAll(`.pl-check[data-grupo="${chkGrupo.dataset.grupo}"]`).forEach(chk => { chk.checked = e.target.checked; });
-    atualizarContagem();
-  }));
-
-  alvo.querySelectorAll('[data-lancar]').forEach(btn => btn.addEventListener('click', (e) => {
-    e.preventDefault();
-    abrirFormLancamento(painelLinhasCache[Number(btn.dataset.lancar)], async () => {
-      await buscarPainel();
-    });
-  }));
-  alvo.querySelectorAll('[data-marcar-faturado]').forEach(btn => btn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    await marcarComoFaturado([painelLinhasCache[Number(btn.dataset.marcarFaturado)]]);
-    await buscarPainel();
-  }));
-
-  const btnLote = document.getElementById('pl-marcar-lote');
-  if (btnLote) btnLote.addEventListener('click', async () => {
-    const selecionadas = checksMarcados().map(chk => painelLinhasCache[Number(chk.dataset.idx)]);
-    if (!selecionadas.length){ alert('Selecione ao menos um lançamento.'); return; }
-    await marcarComoFaturado(selecionadas);
-    await buscarPainel();
-  });
-}
-
-async function marcarComoFaturado(linhas){
-  for (const l of linhas){
-    try{
-      await api('/faturamentos', { method: 'POST', body: JSON.stringify({
-        convenio_id: l.convenio_id,
-        prestador_id: l.prestador_id,
-        tipo: l.tipo,
-        competencia: l.competencia,
-        status: 'faturado',
-        mes_completo: l.mes_completo,
-        faturado_de: l.faturado_de,
-        faturado_ate: l.faturado_ate,
-        observacao: l.observacao,
-      }) });
-    }catch(err){ alert(err.message); }
-  }
 }
 
 function abrirModal(){ document.getElementById('modal-fundo').hidden = false; }
 function fecharModal(){ document.getElementById('modal-fundo').hidden = true; document.getElementById('modal-conteudo').innerHTML = ''; }
 document.getElementById('modal-fundo').addEventListener('click', (e) => { if (e.target.id === 'modal-fundo') fecharModal(); });
 
-function abrirFormLancamento(linha, aoSalvar){
+function abrirProtocolosDoTipo(linha){
   const painel = document.getElementById('modal-conteudo');
-  const salvarDepois = aoSalvar || buscarPainel;
   painel.innerHTML = `
     <div class="cartao">
-      <h2>${escapeHtml(linha.convenio_nome)} · ${escapeHtml(linha.prestador_nome)} · ${linha.tipo} · ${formatarCompetencia(linha.competencia)}</h2>
-      <div class="linha-form">
-        <div class="campo"><label>Status</label>
-          <select id="lf-status">
-            ${Object.entries(ROTULOS_STATUS).map(([v, l]) => `<option value="${v}" ${linha.status === v ? 'selected' : ''}>${l}</option>`).join('')}
-          </select>
-        </div>
-        <div class="campo"><label><input type="checkbox" id="lf-mes-completo" ${linha.mes_completo ? 'checked' : ''}> Mês completo</label></div>
-        <div class="campo"><label>Faturado de</label><input type="date" id="lf-faturado-de" value="${linha.faturado_de ? String(linha.faturado_de).slice(0, 10) : ''}"></div>
-        <div class="campo"><label>Faturado até</label><input type="date" id="lf-faturado-ate" value="${linha.faturado_ate ? String(linha.faturado_ate).slice(0, 10) : ''}"></div>
+      <h2>${escapeHtml(linha.convenio_nome)} · ${escapeHtml(linha.prestador_nome)} · ${linha.tipo}</h2>
+      <p class="subtitulo" style="margin:0 0 16px;">Competência ${formatarCompetencia(linha.competencia)} · <span class="selo ${linha.status}">${rotuloStatus(linha.status)}</span></p>
+      <div class="campo" style="margin-bottom:16px;">
+        <label>Observação</label>
+        <textarea id="pt-observacao" rows="2" style="width:100%;">${escapeHtml(linha.observacao || '')}</textarea>
+        <button class="btn secundario pequeno" id="pt-salvar-obs" style="margin-top:8px;width:fit-content;">Salvar observação</button>
       </div>
-      <div class="linha-form">
-        <div class="campo" style="flex:1;"><label>Observação</label><textarea id="lf-observacao" rows="1" style="width:100%;">${escapeHtml(linha.observacao || '')}</textarea></div>
-      </div>
-      <button class="btn" id="lf-salvar">Salvar</button>
-      ${linha.status === 'enviado_falta_anexo' ? '<button class="btn secundario" id="lf-marcar-faturado">Marcar como Faturado</button>' : ''}
-      ${linha.faturamento_id ? '<button class="btn perigo" id="lf-remover">Remover lançamento</button>' : ''}
-      <button class="btn secundario" id="lf-fechar">Fechar</button>
-      <div class="erro-login" id="lf-erro"></div>
-    </div>
-    <div class="cartao">
-      <h3>Protocolos faturados</h3>
-      <p class="subtitulo" style="margin-bottom:12px;">Vai faturando aos poucos? Adicione um protocolo de cada vez, sempre que enviar.</p>
       <div id="lf-protocolos-conteudo"></div>
+      <button class="btn secundario" id="lf-fechar" style="margin-top:16px;">Fechar</button>
+      <div class="erro-login" id="pt-erro"></div>
     </div>
   `;
   abrirModal();
-  document.getElementById('lf-fechar').addEventListener('click', async () => { fecharModal(); await salvarDepois(); });
-  const btnRemover = document.getElementById('lf-remover');
-  if (btnRemover) btnRemover.addEventListener('click', async () => {
-    if (!confirm('Remover esse lançamento? Ele volta a ficar pendente, e o histórico e os protocolos dele são apagados.')) return;
+  document.getElementById('lf-fechar').addEventListener('click', async () => { fecharModal(); await buscarPainel(); });
+  document.getElementById('pt-salvar-obs').addEventListener('click', async () => {
     try{
-      await api(`/faturamentos?id=${linha.faturamento_id}`, { method: 'DELETE' });
-      fecharModal();
-      await salvarDepois();
-    }catch(err){ document.getElementById('lf-erro').textContent = err.message; }
+      await api('/faturamentos', { method: 'POST', body: JSON.stringify({
+        convenio_id: linha.convenio_id,
+        prestador_id: linha.prestador_id,
+        tipo: linha.tipo,
+        competencia: linha.competencia,
+        observacao: document.getElementById('pt-observacao').value.trim() || null,
+      }) });
+      linha.faturamento_id = linha.faturamento_id || null;
+    }catch(err){ document.getElementById('pt-erro').textContent = err.message; }
   });
-
-  async function salvar(statusForcado){
-    const corpo = {
-      convenio_id: linha.convenio_id,
-      prestador_id: linha.prestador_id,
-      tipo: linha.tipo,
-      competencia: linha.competencia,
-      status: statusForcado || document.getElementById('lf-status').value,
-      mes_completo: document.getElementById('lf-mes-completo').checked,
-      faturado_de: document.getElementById('lf-faturado-de').value || null,
-      faturado_ate: document.getElementById('lf-faturado-ate').value || null,
-      observacao: document.getElementById('lf-observacao').value.trim() || null,
-    };
-    try{
-      const resposta = await api('/faturamentos', { method: 'POST', body: JSON.stringify(corpo) });
-      linha.faturamento_id = resposta.faturamento.id;
-      linha.status = resposta.faturamento.status;
-      await salvarDepois();
-      await renderProtocolosDoLancamento(linha);
-    }catch(err){ document.getElementById('lf-erro').textContent = err.message; }
-  }
-
-  document.getElementById('lf-salvar').addEventListener('click', () => salvar());
-  const btnMarcarFaturado = document.getElementById('lf-marcar-faturado');
-  if (btnMarcarFaturado) btnMarcarFaturado.addEventListener('click', () => salvar('faturado'));
 
   renderProtocolosDoLancamento(linha);
 }
@@ -538,23 +419,19 @@ async function renderProtocolosDoLancamento(linha, filtro){
       html += '<div class="vazio">Nenhum protocolo encontrado.</div>';
     }
 
-    if (linha.faturamento_id){
-      html += `
-        <div class="linha-form" style="margin-top:16px;">
-          <div class="campo"><label>Protocolo</label><input type="text" id="np-protocolo"></div>
-          <div class="campo"><label>Data</label><input type="date" id="np-data"></div>
-          <div class="campo"><label>Qtd. guias</label><input type="number" min="1" id="np-guias" style="width:80px;"></div>
-          <div class="campo"><label>Valor (R$)</label><input type="text" inputmode="numeric" id="np-valor"></div>
-          <div class="campo"><label>Status</label>
-            <select id="np-status">${Object.entries(ROTULOS_STATUS).map(([v, l]) => `<option value="${v}" ${v === 'enviado_falta_anexo' ? 'selected' : ''}>${l}</option>`).join('')}</select>
-          </div>
-          <button class="btn secundario" id="np-adicionar">Adicionar protocolo</button>
+    html += `
+      <div class="linha-form" style="margin-top:16px;">
+        <div class="campo"><label>Protocolo</label><input type="text" id="np-protocolo"></div>
+        <div class="campo"><label>Data</label><input type="date" id="np-data"></div>
+        <div class="campo"><label>Qtd. guias</label><input type="number" min="1" id="np-guias" style="width:80px;"></div>
+        <div class="campo"><label>Valor (R$)</label><input type="text" inputmode="numeric" id="np-valor"></div>
+        <div class="campo"><label>Status</label>
+          <select id="np-status">${Object.entries(ROTULOS_STATUS).map(([v, l]) => `<option value="${v}" ${v === 'enviado_falta_anexo' ? 'selected' : ''}>${l}</option>`).join('')}</select>
         </div>
-        <div class="erro-login" id="np-erro"></div>
-      `;
-    }else{
-      html += '<div class="vazio" style="margin-top:16px;">Salve o lançamento (escolha um status acima) antes de adicionar um novo protocolo.</div>';
-    }
+        <button class="btn secundario" id="np-adicionar">Adicionar protocolo</button>
+      </div>
+      <div class="erro-login" id="np-erro"></div>
+    `;
 
     alvo.innerHTML = html;
 
@@ -568,14 +445,14 @@ async function renderProtocolosDoLancamento(linha, filtro){
     alvo.querySelectorAll('[data-status-protocolo]').forEach(sel => sel.addEventListener('change', async () => {
       try{
         await api(`/protocolos?id=${sel.dataset.statusProtocolo}`, { method: 'PATCH', body: JSON.stringify({ status: sel.value }) });
-        await salvarBarraSilenciosa();
+        await atualizarContextoAposMudanca(linha);
       }catch(err){ alert(err.message); }
     }));
     alvo.querySelectorAll('[data-remover-protocolo]').forEach(btn => btn.addEventListener('click', async () => {
       if (!confirm('Remover esse protocolo?')) return;
       await api(`/protocolos?id=${btn.dataset.removerProtocolo}`, { method: 'DELETE' });
       await renderProtocolosDoLancamento(linha, filtro);
-      await salvarBarraSilenciosa();
+      await atualizarContextoAposMudanca(linha);
     }));
     const btnAdicionar = document.getElementById('np-adicionar');
     if (btnAdicionar){
@@ -586,42 +463,39 @@ async function renderProtocolosDoLancamento(linha, filtro){
         const protocolo = document.getElementById('np-protocolo').value.trim();
         if (!protocolo){ erroEl.textContent = 'Informe o protocolo.'; return; }
         try{
-          await api('/protocolos', { method: 'POST', body: JSON.stringify({
+          const resposta = await api('/protocolos', { method: 'POST', body: JSON.stringify({
             faturamento_id: linha.faturamento_id,
+            convenio_id: linha.convenio_id,
+            prestador_id: linha.prestador_id,
+            tipo: linha.tipo,
+            competencia: linha.competencia,
             protocolo,
             data: document.getElementById('np-data').value || null,
             quantidade_guias: document.getElementById('np-guias').value ? Number(document.getElementById('np-guias').value) : null,
             valor: mascaraMoedaParaNumero(document.getElementById('np-valor').value),
             status: document.getElementById('np-status').value,
           }) });
+          linha.faturamento_id = resposta.faturamento_id;
           await renderProtocolosDoLancamento(linha, filtro);
-          await salvarBarraSilenciosa();
+          await atualizarContextoAposMudanca(linha);
         }catch(err){ erroEl.textContent = err.message; }
       });
     }
   }catch(err){ alvo.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
-
-  async function salvarBarraSilenciosa(){
-    // Atualiza a contagem/valor na tela de trás sem fechar o modal.
-    if (typeof buscarPainel === 'function' && document.getElementById('painel-subconteudo')) await buscarPainel();
-  }
 }
 
-async function mostrarHistorico(faturamentoId){
-  const painel = document.getElementById('painel-lancamento');
-  painel.innerHTML = '<div class="vazio">Carregando histórico...</div>';
-  try{
-    const data = await api('/faturamentos?historico_de=' + faturamentoId);
-    if (!data.historico.length){ painel.innerHTML = '<div class="vazio">Sem histórico.</div>'; return; }
-    let html = '<div class="cartao"><h2>Histórico</h2><table><thead><tr><th>Quando</th><th>Status</th><th>Detalhe</th><th>Por</th></tr></thead><tbody>';
-    for (const h of data.historico){
-      const detalhe = h.status !== 'pendente' ? formatarPeriodo(h.mes_completo, h.faturado_de, h.faturado_ate) : '—';
-      html += `<tr><td>${formatarDataHora(h.criado_em)}</td><td><span class="selo ${h.status}">${rotuloStatus(h.status)}</span></td><td>${detalhe}</td><td>${escapeHtml(h.alterado_por_nome || '—')}</td></tr>`;
-    }
-    html += '</tbody></table><button class="btn secundario" id="hist-fechar">Fechar</button></div>';
-    painel.innerHTML = html;
-    document.getElementById('hist-fechar').addEventListener('click', () => { painel.innerHTML = ''; });
-  }catch(err){ painel.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
+async function atualizarContextoAposMudanca(linha){
+  // Atualiza a tela de trás e, se o popup ainda estiver aberto, o status
+  // exibido no topo dele -- sem fechar nada.
+  await buscarPainel();
+  const atualizada = painelDados.faturamentos.find(f =>
+    f.convenio_id === linha.convenio_id && f.prestador_id === linha.prestador_id && f.tipo === linha.tipo
+  );
+  if (!atualizada) return;
+  linha.status = atualizada.status;
+  linha.faturamento_id = atualizada.faturamento_id;
+  const badge = document.querySelector('#modal-conteudo .selo');
+  if (badge){ badge.className = `selo ${linha.status}`; badge.textContent = rotuloStatus(linha.status); }
 }
 
 // ---------------- Tarefas ----------------

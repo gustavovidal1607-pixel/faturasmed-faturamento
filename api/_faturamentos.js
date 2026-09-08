@@ -26,15 +26,18 @@ async function listarLinhas({ competencia, escopo, convenioId, prestadorId, stat
   const porChave = new Map(lancamentos.map(l => [`${l.convenio_id}:${l.prestador_id}:${l.tipo}`, l]));
 
   const idsLancamentos = lancamentos.map(l => l.id);
-  const resumoProtocolos = new Map(); // faturamento_id -> { quantidade, total }
+  const resumoProtocolos = new Map(); // faturamento_id -> { quantidade, faturados, total }
   if (idsLancamentos.length){
     const agregados = await db`
-      SELECT faturamento_id, COUNT(*) AS quantidade, SUM(valor) AS total
+      SELECT faturamento_id,
+             COUNT(*) AS quantidade,
+             COUNT(*) FILTER (WHERE status = 'faturado') AS faturados,
+             SUM(valor) AS total
       FROM faturamentos_protocolos
       WHERE faturamento_id = ANY(${idsLancamentos})
       GROUP BY faturamento_id
     `;
-    for (const a of agregados) resumoProtocolos.set(a.faturamento_id, { quantidade: Number(a.quantidade), total: a.total });
+    for (const a of agregados) resumoProtocolos.set(a.faturamento_id, { quantidade: Number(a.quantidade), faturados: Number(a.faturados), total: a.total });
   }
 
   let linhas = [];
@@ -54,6 +57,7 @@ async function listarLinhas({ competencia, escopo, convenioId, prestadorId, stat
         faturado_de: l ? l.faturado_de : null,
         faturado_ate: l ? l.faturado_ate : null,
         protocolos_quantidade: resumo ? resumo.quantidade : 0,
+        protocolos_faturados: resumo ? resumo.faturados : 0,
         protocolos_total: resumo ? resumo.total : null,
         observacao: l ? l.observacao : null,
         faturamento_id: l ? l.id : null,
