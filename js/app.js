@@ -104,6 +104,34 @@ function montarNav(usuario){
 function abrirAba(id){
   document.querySelectorAll('#nav-abas button').forEach(btn => btn.classList.toggle('ativa', btn.dataset.aba === id));
   ABAS[id].render();
+  carregarBarraLembretes();
+}
+
+async function carregarBarraLembretes(){
+  const barra = document.getElementById('barra-lembretes');
+  if (!barra) return;
+  try{
+    const data = await api('/dashboard');
+    let html = '<h3>Prazos chegando</h3>';
+    if (!data.prazos_proximos.length){
+      html += '<div class="vazio">Nenhum prazo próximo.</div>';
+    }else{
+      for (const c of data.prazos_proximos){
+        html += `<div class="item-lembrete"><div class="titulo">${escapeHtml(c.nome)}</div><div class="detalhe">${c.dias_restantes === 0 ? 'fecha hoje' : 'fecha em ' + c.dias_restantes + ' dia(s)'}</div></div>`;
+      }
+    }
+    html += '<h3>Mais pendências</h3>';
+    if (!data.ranking_pendencias.length){
+      html += '<div class="vazio">Nada pendente.</div>';
+    }else{
+      for (const r of data.ranking_pendencias){
+        html += `<div class="item-lembrete"><div class="titulo">${escapeHtml(r.prestador_nome)}</div><div class="detalhe">${r.total} pendência(s)</div></div>`;
+      }
+    }
+    barra.innerHTML = html;
+  }catch(err){
+    barra.innerHTML = '';
+  }
 }
 
 function iniciarApp(usuario){
@@ -158,15 +186,19 @@ function montarPainel(){
   const contagens = { pendente: 0, enviado_falta_anexo: 0, faturado: 0 };
   for (const l of data.faturamentos) contagens[l.status] = (contagens[l.status] || 0) + 1;
 
-  html += '<div class="subabas" id="painel-subabas">';
+  html += '<div class="grade-kpi" id="painel-kpis">';
   for (const aba of PAINEL_ABAS){
-    html += `<button data-sub="${aba.id}" class="${painelSubaba === aba.id ? 'ativa' : ''}">${aba.label} (${contagens[aba.id] || 0})</button>`;
+    html += `<div class="kpi cor-${aba.id} ${painelSubaba === aba.id ? 'ativa' : ''}" data-sub="${aba.id}">
+      <div class="rotulo">${aba.label}</div>
+      <div class="numero">${contagens[aba.id] || 0}</div>
+    </div>`;
   }
   html += '</div><div id="painel-lancamento"></div><div id="painel-subconteudo"></div>';
   cont.innerHTML = html;
 
-  document.querySelectorAll('#painel-subabas button').forEach(btn => {
-    btn.addEventListener('click', () => { painelSubaba = btn.dataset.sub; montarPainel(); });
+  document.querySelectorAll('#painel-kpis .kpi').forEach(card => {
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', () => { painelSubaba = card.dataset.sub; montarPainel(); });
   });
 
   renderPainelLinhas();
@@ -180,24 +212,38 @@ function renderPainelLinhas(){
   painelLinhasCache = linhas;
   if (!linhas.length){ alvo.innerHTML = '<div class="cartao"><div class="vazio">Nada aqui nessa competência.</div></div>'; return; }
 
-  const porTipo = new Map();
+  const porPrestador = new Map();
   linhas.forEach((l, idx) => {
-    if (!porTipo.has(l.tipo)) porTipo.set(l.tipo, []);
-    porTipo.get(l.tipo).push(idx);
+    if (!porPrestador.has(l.prestador_id)) porPrestador.set(l.prestador_id, { nome: l.prestador_nome, idxs: [] });
+    porPrestador.get(l.prestador_id).idxs.push(idx);
   });
-  const tipos = [...porTipo.keys()].sort((a, b) => ORDEM_TIPO.indexOf(a) - ORDEM_TIPO.indexOf(b));
+  const prestadoresOrdenados = [...porPrestador.entries()].sort((a, b) => a[1].nome.localeCompare(b[1].nome));
   const mostrarProtocoloValor = painelSubaba !== 'pendente';
+  const podeMarcarFaturado = painelSubaba === 'enviado_falta_anexo';
 
-  let html = '<div class="grade-tipos">';
-  for (const tipo of tipos){
-    const idxGrupo = porTipo.get(tipo);
-    html += `<div class="cartao"><h2>${tipo} (${idxGrupo.length})</h2>`;
-    html += `<table><thead><tr><th>Convênio</th><th>Prestador</th><th>Competência</th><th>Status</th>${mostrarProtocoloValor ? '<th>Protocolo</th><th>Valor</th>' : ''}<th>Observação</th><th></th></tr></thead><tbody>`;
-    for (const idx of idxGrupo){
+  let html = `
+    <div class="barra-lote">
+      <span class="contagem" id="pl-contagem">0 selecionado(s)</span>
+      ${podeMarcarFaturado ? '<button class="btn secundario pequeno" id="pl-marcar-lote">Marcar selecionados como Faturado</button>' : ''}
+    </div>
+  `;
+  for (const [prestadorId, grupo] of prestadoresOrdenados){
+    const convenios = new Set(grupo.idxs.map(i => linhas[i].convenio_id));
+    const tipos = new Set(grupo.idxs.map(i => linhas[i].tipo));
+    html += `<details class="grupo-prestador">
+      <summary>
+        <input type="checkbox" class="pl-check-grupo" data-prestador="${prestadorId}" onclick="event.stopPropagation()">
+        <span class="nome-prestador">${escapeHtml(grupo.nome)}</span>
+        <span class="resumo">${grupo.idxs.length} lançamento(s) · ${tipos.size} tipo(s) · ${convenios.size} convênio(s)</span>
+      </summary>
+      <div class="conteudo-grupo">
+        <table><thead><tr><th></th><th>Convênio</th><th>Tipo</th><th>Competência</th><th>Status</th>${mostrarProtocoloValor ? '<th>Protocolo</th><th>Valor</th>' : ''}<th>Observação</th><th></th></tr></thead><tbody>`;
+    for (const idx of grupo.idxs){
       const l = linhas[idx];
       html += `<tr>
+        <td><input type="checkbox" class="pl-check" data-prestador="${prestadorId}" data-idx="${idx}"></td>
         <td>${escapeHtml(l.convenio_nome)}</td>
-        <td>${escapeHtml(l.prestador_nome)}</td>
+        <td>${l.tipo}</td>
         <td>${formatarCompetencia(l.competencia)}</td>
         <td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td>
         ${mostrarProtocoloValor ? `<td>${escapeHtml(l.protocolo || '—')}</td><td>${l.valor != null ? 'R$ ' + Number(l.valor).toFixed(2) : '—'}</td>` : ''}
@@ -208,21 +254,46 @@ function renderPainelLinhas(){
         </td>
       </tr>`;
     }
-    html += '</tbody></table></div>';
+    html += '</tbody></table></div></details>';
   }
-  html += '</div>';
   alvo.innerHTML = html;
 
-  alvo.innerHTML = html;
+  function checksMarcados(){ return [...alvo.querySelectorAll('.pl-check:checked')]; }
+  function atualizarContagem(){
+    document.getElementById('pl-contagem').textContent = `${checksMarcados().length} selecionado(s)`;
+  }
+  alvo.querySelectorAll('.pl-check').forEach(chk => chk.addEventListener('change', atualizarContagem));
+  alvo.querySelectorAll('.pl-check-grupo').forEach(chkGrupo => chkGrupo.addEventListener('change', (e) => {
+    alvo.querySelectorAll(`.pl-check[data-prestador="${chkGrupo.dataset.prestador}"]`).forEach(chk => { chk.checked = e.target.checked; });
+    atualizarContagem();
+  }));
 
-  alvo.querySelectorAll('[data-lancar]').forEach(btn => btn.addEventListener('click', () => {
+  alvo.querySelectorAll('[data-lancar]').forEach(btn => btn.addEventListener('click', (e) => {
+    e.preventDefault();
     abrirFormLancamento(painelLinhasCache[Number(btn.dataset.lancar)], 'painel-lancamento', async () => {
       painelDados = await api('/dashboard');
       montarPainel();
     });
   }));
-  alvo.querySelectorAll('[data-marcar-faturado]').forEach(btn => btn.addEventListener('click', async () => {
-    const l = painelLinhasCache[Number(btn.dataset.marcarFaturado)];
+  alvo.querySelectorAll('[data-marcar-faturado]').forEach(btn => btn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    await marcarComoFaturado([painelLinhasCache[Number(btn.dataset.marcarFaturado)]]);
+    painelDados = await api('/dashboard');
+    montarPainel();
+  }));
+
+  const btnLote = document.getElementById('pl-marcar-lote');
+  if (btnLote) btnLote.addEventListener('click', async () => {
+    const selecionadas = checksMarcados().map(chk => painelLinhasCache[Number(chk.dataset.idx)]);
+    if (!selecionadas.length){ alert('Selecione ao menos um lançamento.'); return; }
+    await marcarComoFaturado(selecionadas);
+    painelDados = await api('/dashboard');
+    montarPainel();
+  });
+}
+
+async function marcarComoFaturado(linhas){
+  for (const l of linhas){
     try{
       await api('/faturamentos', { method: 'POST', body: JSON.stringify({
         convenio_id: l.convenio_id,
@@ -237,10 +308,8 @@ function renderPainelLinhas(){
         valor: l.valor,
         observacao: l.observacao,
       }) });
-      painelDados = await api('/dashboard');
-      montarPainel();
     }catch(err){ alert(err.message); }
-  }));
+  }
 }
 
 // ---------------- Faturamentos ----------------
@@ -260,6 +329,7 @@ async function renderFaturamentos(){
   cont.innerHTML = `
     <h1>Faturamentos</h1>
     <p class="subtitulo">Marque o que já foi faturado por competência.</p>
+    <div class="grade-kpi" id="faturamentos-kpis"></div>
     <div class="cartao">
       <div class="filtros">
         <div class="campo"><label>Competência</label><input type="month" id="f-competencia" value="${competenciaPadrao}"></div>
@@ -286,30 +356,78 @@ async function carregarFaturamentos(){
   if (prestador_id) params.set('prestador_id', prestador_id);
   if (status) params.set('status', status);
   const alvo = document.getElementById('tabela-faturamentos');
+  const kpiAlvo = document.getElementById('faturamentos-kpis');
   alvo.innerHTML = '<div class="vazio">Carregando...</div>';
   try{
     const data = await api('/faturamentos?' + params.toString());
     faturamentosCache = data.faturamentos;
+
+    const contagens = { pendente: 0, enviado_falta_anexo: 0, faturado: 0 };
+    for (const l of data.faturamentos) contagens[l.status] = (contagens[l.status] || 0) + 1;
+    kpiAlvo.innerHTML = PAINEL_ABAS.map(aba => `<div class="kpi cor-${aba.id}"><div class="rotulo">${aba.label}</div><div class="numero">${contagens[aba.id] || 0}</div></div>`).join('');
+
     if (!data.faturamentos.length){ alvo.innerHTML = '<div class="vazio">Nenhum lançamento encontrado para esse filtro.</div>'; return; }
-    let html = '<table><thead><tr><th>Convênio</th><th>Prestador</th><th>Tipo</th><th>Status</th><th>Detalhe</th><th></th></tr></thead><tbody>';
-    data.faturamentos.forEach((l, i) => {
-      const detalhe = l.status !== 'pendente' ? formatarPeriodo(l.mes_completo, l.faturado_de, l.faturado_ate) : '—';
-      html += `<tr>
-        <td>${escapeHtml(l.convenio_nome)}</td>
-        <td>${escapeHtml(l.prestador_nome)}</td>
-        <td>${l.tipo}</td>
-        <td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td>
-        <td>${detalhe}${l.observacao ? `<div class="particularidade-txt">${escapeHtml(l.observacao)}</div>` : ''}</td>
-        <td class="acoes-linha">
-          <button class="btn pequeno" data-editar="${i}">Lançar</button>
-          ${l.faturamento_id ? `<button class="btn secundario pequeno" data-historico="${l.faturamento_id}">Histórico</button>` : ''}
-        </td>
-      </tr>`;
+
+    const porPrestador = new Map();
+    data.faturamentos.forEach((l, idx) => {
+      if (!porPrestador.has(l.prestador_id)) porPrestador.set(l.prestador_id, { nome: l.prestador_nome, idxs: [] });
+      porPrestador.get(l.prestador_id).idxs.push(idx);
     });
-    html += '</tbody></table>';
+    const prestadoresOrdenados = [...porPrestador.entries()].sort((a, b) => a[1].nome.localeCompare(b[1].nome));
+
+    let html = `
+      <div class="barra-lote">
+        <span class="contagem" id="ft-contagem">0 selecionado(s)</span>
+        <button class="btn secundario pequeno" id="ft-marcar-lote">Marcar selecionados como Faturado</button>
+      </div>
+    `;
+    for (const [prestadorId, grupo] of prestadoresOrdenados){
+      const convenios = new Set(grupo.idxs.map(i => data.faturamentos[i].convenio_id));
+      const tipos = new Set(grupo.idxs.map(i => data.faturamentos[i].tipo));
+      html += `<details class="grupo-prestador">
+        <summary>
+          <input type="checkbox" class="ft-check-grupo" data-prestador="${prestadorId}" onclick="event.stopPropagation()">
+          <span class="nome-prestador">${escapeHtml(grupo.nome)}</span>
+          <span class="resumo">${grupo.idxs.length} lançamento(s) · ${tipos.size} tipo(s) · ${convenios.size} convênio(s)</span>
+        </summary>
+        <div class="conteudo-grupo">
+          <table><thead><tr><th></th><th>Convênio</th><th>Tipo</th><th>Status</th><th>Detalhe</th><th></th></tr></thead><tbody>`;
+      for (const idx of grupo.idxs){
+        const l = data.faturamentos[idx];
+        const detalhe = l.status !== 'pendente' ? formatarPeriodo(l.mes_completo, l.faturado_de, l.faturado_ate) : '—';
+        html += `<tr>
+          <td><input type="checkbox" class="ft-check" data-prestador="${prestadorId}" data-idx="${idx}"></td>
+          <td>${escapeHtml(l.convenio_nome)}</td>
+          <td>${l.tipo}</td>
+          <td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td>
+          <td>${detalhe}${l.observacao ? `<div class="particularidade-txt">${escapeHtml(l.observacao)}</div>` : ''}</td>
+          <td class="acoes-linha">
+            <button class="btn pequeno" data-editar="${idx}">Lançar</button>
+            ${l.faturamento_id ? `<button class="btn secundario pequeno" data-historico="${l.faturamento_id}">Histórico</button>` : ''}
+          </td>
+        </tr>`;
+      }
+      html += '</tbody></table></div></details>';
+    }
     alvo.innerHTML = html;
-    alvo.querySelectorAll('[data-editar]').forEach(btn => btn.addEventListener('click', () => abrirFormLancamento(faturamentosCache[Number(btn.dataset.editar)])));
-    alvo.querySelectorAll('[data-historico]').forEach(btn => btn.addEventListener('click', () => mostrarHistorico(Number(btn.dataset.historico))));
+
+    function checksMarcados(){ return [...alvo.querySelectorAll('.ft-check:checked')]; }
+    function atualizarContagem(){ document.getElementById('ft-contagem').textContent = `${checksMarcados().length} selecionado(s)`; }
+    alvo.querySelectorAll('.ft-check').forEach(chk => chk.addEventListener('change', atualizarContagem));
+    alvo.querySelectorAll('.ft-check-grupo').forEach(chkGrupo => chkGrupo.addEventListener('change', (e) => {
+      alvo.querySelectorAll(`.ft-check[data-prestador="${chkGrupo.dataset.prestador}"]`).forEach(chk => { chk.checked = e.target.checked; });
+      atualizarContagem();
+    }));
+
+    alvo.querySelectorAll('[data-editar]').forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); abrirFormLancamento(faturamentosCache[Number(btn.dataset.editar)]); }));
+    alvo.querySelectorAll('[data-historico]').forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); mostrarHistorico(Number(btn.dataset.historico)); }));
+
+    document.getElementById('ft-marcar-lote').addEventListener('click', async () => {
+      const selecionadas = checksMarcados().map(chk => faturamentosCache[Number(chk.dataset.idx)]);
+      if (!selecionadas.length){ alert('Selecione ao menos um lançamento.'); return; }
+      await marcarComoFaturado(selecionadas);
+      await carregarFaturamentos();
+    });
   }catch(err){ alvo.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
 }
 
@@ -402,6 +520,7 @@ async function renderTarefas(){
   if (usuario.cargo === 'administrador') usuarios = await api('/usuarios').then(d => d.usuarios).catch(() => []);
 
   let html = '<h1>Tarefas</h1><p class="subtitulo">Designadas pelo administrador, com confirmação de recebimento e finalização.</p>';
+  html += '<div class="grade-kpi" id="tarefas-kpis"></div>';
   if (usuario.cargo === 'administrador'){
     html += `
       <div class="cartao">
@@ -438,11 +557,20 @@ async function renderTarefas(){
   await carregarTarefas();
 }
 
+const TAREFAS_ABAS = [
+  { id: 'aguardando', label: 'Aguardando' },
+  { id: 'recebida', label: 'Recebida' },
+  { id: 'finalizada', label: 'Finalizada' },
+];
+
 async function carregarTarefas(){
   const usuario = usuarioAtual();
   const alvo = document.getElementById('lista-tarefas');
   try{
     const data = await api('/tarefas');
+    const contagens = { aguardando: 0, recebida: 0, finalizada: 0 };
+    for (const t of data.tarefas) contagens[t.status] = (contagens[t.status] || 0) + 1;
+    document.getElementById('tarefas-kpis').innerHTML = TAREFAS_ABAS.map(aba => `<div class="kpi cor-${aba.id}"><div class="rotulo">${aba.label}</div><div class="numero">${contagens[aba.id] || 0}</div></div>`).join('');
     if (!data.tarefas.length){ alvo.innerHTML = '<div class="vazio">Nenhuma tarefa.</div>'; return; }
     let html = '<table><thead><tr><th>Descrição</th><th>Prazo</th>' + (usuario.cargo === 'administrador' ? '<th>Responsável</th>' : '') + '<th>Status</th><th></th></tr></thead><tbody>';
     for (const t of data.tarefas){

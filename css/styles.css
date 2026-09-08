@@ -111,11 +111,103 @@ nav.abas button.ativa{ background: var(--blue); color: #fff; }
 .usuario-info .nome{ font-weight: 600; font-size: 14px; }
 .usuario-info .papel{ font-size: 11px; color: var(--muted); text-transform: uppercase; }
 
+.corpo{
+  display: flex;
+  align-items: flex-start;
+}
+
 main{
+  flex: 1;
+  min-width: 0;
   padding: 24px;
   max-width: 1200px;
   margin: 0 auto;
 }
+
+.barra-lembretes{
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--card);
+  border-right: 1px solid var(--border);
+  padding: 20px 16px;
+  min-height: calc(100vh - 60px);
+  font-size: 13px;
+}
+.barra-lembretes h3{
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 20px 0 10px;
+  letter-spacing: 0.03em;
+}
+.barra-lembretes h3:first-child{ margin-top: 0; }
+.barra-lembretes .item-lembrete{
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.barra-lembretes .item-lembrete:last-child{ border-bottom: none; }
+.barra-lembretes .item-lembrete .titulo{ font-weight: 600; }
+.barra-lembretes .item-lembrete .detalhe{ color: var(--muted); font-size: 12px; }
+.barra-lembretes .vazio{ padding: 4px 0; font-size: 12px; }
+
+/* ---- KPIs ---- */
+.grade-kpi{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.kpi{
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+.kpi .rotulo{ font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.kpi .numero{ font-size: 28px; font-weight: 800; }
+.kpi.ativa{ border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
+.kpi.cor-pendente .numero{ color: var(--warning); }
+.kpi.cor-enviado_falta_anexo .numero{ color: var(--blue); }
+.kpi.cor-faturado .numero{ color: var(--success); }
+.kpi.cor-aguardando .numero{ color: var(--warning); }
+.kpi.cor-recebida .numero{ color: var(--blue); }
+.kpi.cor-finalizada .numero{ color: var(--success); }
+
+/* ---- Linhas expansíveis por prestador ---- */
+.barra-lote{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.barra-lote .contagem{ font-size: 13px; color: var(--muted); }
+
+.grupo-prestador{
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.grupo-prestador summary{
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+}
+.grupo-prestador summary::-webkit-details-marker{ display: none; }
+.grupo-prestador summary::before{
+  content: '▸';
+  color: var(--muted);
+  transition: transform 0.15s;
+  font-size: 11px;
+}
+.grupo-prestador[open] summary::before{ transform: rotate(90deg); }
+.grupo-prestador summary .nome-prestador{ font-weight: 700; }
+.grupo-prestador summary .resumo{ color: var(--muted); font-size: 12px; }
+.grupo-prestador .conteudo-grupo{ padding: 0 16px 12px; }
 
 h1{ font-size: 20px; margin: 0 0 4px; }
 h2{ font-size: 16px; margin: 0 0 12px; }
