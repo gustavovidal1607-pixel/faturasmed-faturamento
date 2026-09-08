@@ -28,6 +28,25 @@ function formatarDataHora(iso){
   return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+// Máscara de moeda: digita só números, a vírgula dos centavos entra
+// sozinha (ex: "150" -> "1,50", "15000" -> "150,00").
+function aplicarMascaraMoeda(input){
+  input.addEventListener('input', () => {
+    let digitos = input.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    if (!digitos){ input.value = ''; return; }
+    while (digitos.length < 3) digitos = '0' + digitos;
+    const inteiro = digitos.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    input.value = `${inteiro},${digitos.slice(-2)}`;
+  });
+}
+function mascaraMoedaParaNumero(texto){
+  if (!texto) return null;
+  const numero = Number(texto.replace(/\./g, '').replace(',', '.'));
+  return isNaN(numero) ? null : numero;
+}
+function numeroParaMascaraMoeda(numero){
+  return numero == null ? '' : Number(numero).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function formatarCompetencia(comp){
   if (!comp) return '—';
   const [ano, mes] = String(comp).split('-');
@@ -246,7 +265,7 @@ function renderPainelLinhas(){
         <td>${l.tipo}</td>
         <td>${formatarCompetencia(l.competencia)}</td>
         <td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td>
-        ${mostrarProtocoloValor ? `<td>${escapeHtml(l.protocolo || '—')}</td><td>${l.valor != null ? 'R$ ' + Number(l.valor).toFixed(2) : '—'}</td>` : ''}
+        ${mostrarProtocoloValor ? `<td>${escapeHtml(l.protocolo || '—')}</td><td>${l.valor != null ? 'R$ ' + numeroParaMascaraMoeda(l.valor) : '—'}</td>` : ''}
         <td>${escapeHtml(l.observacao || '—')}</td>
         <td class="acoes-linha">
           <button class="btn pequeno" data-lancar="${idx}">Lançar</button>
@@ -450,7 +469,7 @@ function abrirFormLancamento(linha, alvoId, aoSalvar){
       </div>
       <div class="linha-form" id="lf-protocolo-wrap" ${mostraProtocolo ? '' : 'hidden'}>
         <div class="campo"><label>Protocolo</label><input type="text" id="lf-protocolo" value="${escapeHtml(linha.protocolo || '')}"></div>
-        <div class="campo"><label>Valor (R$)</label><input type="number" step="0.01" min="0" id="lf-valor" value="${linha.valor ?? ''}"></div>
+        <div class="campo"><label>Valor (R$)</label><input type="text" inputmode="numeric" id="lf-valor" value="${numeroParaMascaraMoeda(linha.valor)}"></div>
       </div>
       <div class="linha-form">
         <div class="campo" style="flex:1;"><label>Observação</label><textarea id="lf-observacao" rows="1" style="width:100%;">${escapeHtml(linha.observacao || '')}</textarea></div>
@@ -462,6 +481,7 @@ function abrirFormLancamento(linha, alvoId, aoSalvar){
     </div>
   `;
   painel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  aplicarMascaraMoeda(document.getElementById('lf-valor'));
   document.getElementById('lf-status').addEventListener('change', (e) => {
     document.getElementById('lf-protocolo-wrap').hidden = e.target.value === 'pendente';
   });
@@ -478,7 +498,7 @@ function abrirFormLancamento(linha, alvoId, aoSalvar){
       faturado_de: document.getElementById('lf-faturado-de').value || null,
       faturado_ate: document.getElementById('lf-faturado-ate').value || null,
       protocolo: document.getElementById('lf-protocolo').value.trim() || null,
-      valor: document.getElementById('lf-valor').value ? Number(document.getElementById('lf-valor').value) : null,
+      valor: mascaraMoedaParaNumero(document.getElementById('lf-valor').value),
       observacao: document.getElementById('lf-observacao').value.trim() || null,
     };
     try{
