@@ -125,6 +125,10 @@ async function ensureSchema(){
     // (guia, laudo etc) -- ainda não conta como faturado de fato.
     await db`ALTER TABLE faturamentos DROP CONSTRAINT IF EXISTS faturamentos_status_check`;
     await db`ALTER TABLE faturamentos ADD CONSTRAINT faturamentos_status_check CHECK (status IN ('pendente','enviado_falta_anexo','faturado'))`;
+    // Protocolo e valor do envio -- preenchidos assim que fica
+    // "enviado_falta_anexo" e mantidos quando o status vira "faturado".
+    await db`ALTER TABLE faturamentos ADD COLUMN IF NOT EXISTS protocolo TEXT`;
+    await db`ALTER TABLE faturamentos ADD COLUMN IF NOT EXISTS valor NUMERIC(12,2)`;
 
     // Histórico completo de alterações de um lançamento (cada POST em
     // api/faturamentos.js grava uma linha aqui, nunca some).
@@ -140,6 +144,8 @@ async function ensureSchema(){
       criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )`;
     await db`CREATE INDEX IF NOT EXISTS idx_faturamentos_historico_faturamento ON faturamentos_historico(faturamento_id)`;
+    await db`ALTER TABLE faturamentos_historico ADD COLUMN IF NOT EXISTS protocolo TEXT`;
+    await db`ALTER TABLE faturamentos_historico ADD COLUMN IF NOT EXISTS valor NUMERIC(12,2)`;
     await db`ALTER TABLE faturamentos_historico ADD COLUMN IF NOT EXISTS faturado_de DATE`;
 
     // Tarefas avulsas do administrador pro funcionário, com confirmação de

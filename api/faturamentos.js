@@ -43,7 +43,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === 'POST'){
-      const { convenio_id, prestador_id, tipo, competencia, status, mes_completo, faturado_de, faturado_ate, observacao } = req.body || {};
+      const { convenio_id, prestador_id, tipo, competencia, status, mes_completo, faturado_de, faturado_ate, protocolo, valor, observacao } = req.body || {};
       if (!convenio_id || !prestador_id){ res.status(400).json({ erro: 'Selecione o prestador e o convênio.' }); return; }
       if (!TIPOS_VALIDOS.includes(tipo)){ res.status(400).json({ erro: 'Tipo inválido.' }); return; }
       if (!competencia || !/^\d{4}-\d{2}$/.test(competencia)){ res.status(400).json({ erro: 'Competência inválida.' }); return; }
@@ -53,14 +53,16 @@ module.exports = async (req, res) => {
 
       const statusFinal = STATUS_VALIDOS.includes(status) ? status : 'pendente';
       const upsert = await db`
-        INSERT INTO faturamentos (convenio_id, prestador_id, tipo, competencia, status, mes_completo, faturado_de, faturado_ate, observacao, lancado_por)
-        VALUES (${convenio_id}, ${prestador_id}, ${tipo}, ${competencia}, ${statusFinal}, ${!!mes_completo}, ${faturado_de || null}, ${faturado_ate || null}, ${observacao || null}, ${usuario.id})
+        INSERT INTO faturamentos (convenio_id, prestador_id, tipo, competencia, status, mes_completo, faturado_de, faturado_ate, protocolo, valor, observacao, lancado_por)
+        VALUES (${convenio_id}, ${prestador_id}, ${tipo}, ${competencia}, ${statusFinal}, ${!!mes_completo}, ${faturado_de || null}, ${faturado_ate || null}, ${protocolo || null}, ${valor ?? null}, ${observacao || null}, ${usuario.id})
         ON CONFLICT (convenio_id, prestador_id, tipo, competencia)
         DO UPDATE SET
           status = EXCLUDED.status,
           mes_completo = EXCLUDED.mes_completo,
           faturado_de = EXCLUDED.faturado_de,
           faturado_ate = EXCLUDED.faturado_ate,
+          protocolo = EXCLUDED.protocolo,
+          valor = EXCLUDED.valor,
           observacao = EXCLUDED.observacao,
           lancado_por = EXCLUDED.lancado_por,
           atualizado_em = now()
@@ -68,8 +70,8 @@ module.exports = async (req, res) => {
       `;
       const faturamento = upsert[0];
       await db`
-        INSERT INTO faturamentos_historico (faturamento_id, status, mes_completo, faturado_de, faturado_ate, observacao, alterado_por)
-        VALUES (${faturamento.id}, ${faturamento.status}, ${faturamento.mes_completo}, ${faturamento.faturado_de}, ${faturamento.faturado_ate}, ${faturamento.observacao}, ${usuario.id})
+        INSERT INTO faturamentos_historico (faturamento_id, status, mes_completo, faturado_de, faturado_ate, protocolo, valor, observacao, alterado_por)
+        VALUES (${faturamento.id}, ${faturamento.status}, ${faturamento.mes_completo}, ${faturamento.faturado_de}, ${faturamento.faturado_ate}, ${faturamento.protocolo}, ${faturamento.valor}, ${faturamento.observacao}, ${usuario.id})
       `;
       res.status(200).json({ faturamento });
       return;

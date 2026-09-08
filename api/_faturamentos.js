@@ -40,6 +40,8 @@ async function listarLinhas({ competencia, escopo, convenioId, prestadorId, stat
         mes_completo: l ? !!l.mes_completo : false,
         faturado_de: l ? l.faturado_de : null,
         faturado_ate: l ? l.faturado_ate : null,
+        protocolo: l ? l.protocolo : null,
+        valor: l ? l.valor : null,
         observacao: l ? l.observacao : null,
         faturamento_id: l ? l.id : null,
       });

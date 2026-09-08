@@ -27,6 +27,13 @@ function formatarData(iso){
 function formatarDataHora(iso){
   return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
+const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+function formatarCompetencia(comp){
+  if (!comp) return '—';
+  const [ano, mes] = String(comp).split('-');
+  const nome = MESES_PT[Number(mes) - 1];
+  return nome ? `${nome} de ${ano}` : comp;
+}
 const ROTULOS_STATUS = { pendente: 'Pendente', enviado_falta_anexo: 'Enviado - falta anexo', faturado: 'Faturado' };
 function rotuloStatus(status){ return ROTULOS_STATUS[status] || status; }
 function opcoesStatus(comTodos){
@@ -139,7 +146,7 @@ async function renderPainel(){
 function montarPainel(){
   const cont = document.getElementById('conteudo');
   const data = painelDados;
-  let html = `<h1>Painel</h1><p class="subtitulo">Competência ${data.competencia}</p>`;
+  let html = `<h1>Painel</h1><p class="subtitulo">Competência ${formatarCompetencia(data.competencia)}</p>`;
   if (data.prazos_proximos.length){
     html += '<div class="cartao"><h2>Prazos de fechamento chegando</h2>';
     for (const c of data.prazos_proximos){
@@ -155,7 +162,7 @@ function montarPainel(){
   for (const aba of PAINEL_ABAS){
     html += `<button data-sub="${aba.id}" class="${painelSubaba === aba.id ? 'ativa' : ''}">${aba.label} (${contagens[aba.id] || 0})</button>`;
   }
-  html += '</div><div id="painel-subconteudo"></div>';
+  html += '</div><div id="painel-lancamento"></div><div id="painel-subconteudo"></div>';
   cont.innerHTML = html;
 
   document.querySelectorAll('#painel-subabas button').forEach(btn => {
@@ -165,35 +172,73 @@ function montarPainel(){
   renderPainelLinhas();
 }
 
+let painelLinhasCache = [];
+
 function renderPainelLinhas(){
   const alvo = document.getElementById('painel-subconteudo');
   const linhas = painelDados.faturamentos.filter(l => l.status === painelSubaba);
+  painelLinhasCache = linhas;
   if (!linhas.length){ alvo.innerHTML = '<div class="cartao"><div class="vazio">Nada aqui nessa competência.</div></div>'; return; }
 
   const porTipo = new Map();
-  for (const l of linhas){
+  linhas.forEach((l, idx) => {
     if (!porTipo.has(l.tipo)) porTipo.set(l.tipo, []);
-    porTipo.get(l.tipo).push(l);
-  }
+    porTipo.get(l.tipo).push(idx);
+  });
   const tipos = [...porTipo.keys()].sort((a, b) => ORDEM_TIPO.indexOf(a) - ORDEM_TIPO.indexOf(b));
+  const mostrarProtocoloValor = painelSubaba !== 'pendente';
 
   let html = '<div class="grade-tipos">';
   for (const tipo of tipos){
-    const grupo = porTipo.get(tipo);
-    html += `<div class="cartao"><h2>${tipo} (${grupo.length})</h2>`;
-    html += '<table><thead><tr><th>Convênio</th><th>Prestador</th><th>Competência</th><th>Status</th><th>Observação</th></tr></thead><tbody>';
-    for (const l of grupo){
+    const idxGrupo = porTipo.get(tipo);
+    html += `<div class="cartao"><h2>${tipo} (${idxGrupo.length})</h2>`;
+    html += `<table><thead><tr><th>Convênio</th><th>Prestador</th><th>Competência</th><th>Status</th>${mostrarProtocoloValor ? '<th>Protocolo</th><th>Valor</th>' : ''}<th>Observação</th><th></th></tr></thead><tbody>`;
+    for (const idx of idxGrupo){
+      const l = linhas[idx];
       html += `<tr>
         <td>${escapeHtml(l.convenio_nome)}</td>
         <td>${escapeHtml(l.prestador_nome)}</td>
-        <td>${l.competencia}</td>
+        <td>${formatarCompetencia(l.competencia)}</td>
         <td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td>
+        ${mostrarProtocoloValor ? `<td>${escapeHtml(l.protocolo || '—')}</td><td>${l.valor != null ? 'R$ ' + Number(l.valor).toFixed(2) : '—'}</td>` : ''}
         <td>${escapeHtml(l.observacao || '—')}</td>
+        <td class="acoes-linha">
+          <button class="btn pequeno" data-lancar="${idx}">Lançar</button>
+          ${l.status === 'enviado_falta_anexo' ? `<button class="btn secundario pequeno" data-marcar-faturado="${idx}">Marcar Faturado</button>` : ''}
+        </td>
       </tr>`;
     }
     html += '</tbody></table></div>';
   }
   html += '</div>';
+  alvo.innerHTML = html;
+
+  alvo.querySelectorAll('[data-lancar]').forEach(btn => btn.addEventListener('click', () => {
+    abrirFormLancamento(painelLinhasCache[Number(btn.dataset.lancar)], 'painel-lancamento', async () => {
+      painelDados = await api('/dashboard');
+      montarPainel();
+    });
+  }));
+  alvo.querySelectorAll('[data-marcar-faturado]').forEach(btn => btn.addEventListener('click', async () => {
+    const l = painelLinhasCache[Number(btn.dataset.marcarFaturado)];
+    try{
+      await api('/faturamentos', { method: 'POST', body: JSON.stringify({
+        convenio_id: l.convenio_id,
+        prestador_id: l.prestador_id,
+        tipo: l.tipo,
+        competencia: l.competencia,
+        status: 'faturado',
+        mes_completo: l.mes_completo,
+        faturado_de: l.faturado_de,
+        faturado_ate: l.faturado_ate,
+        protocolo: l.protocolo,
+        valor: l.valor,
+        observacao: l.observacao,
+      }) });
+      painelDados = await api('/dashboard');
+      montarPainel();
+    }catch(err){ alert(err.message); }
+  }));
   alvo.innerHTML = html;
 }
 
@@ -267,11 +312,13 @@ async function carregarFaturamentos(){
   }catch(err){ alvo.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
 }
 
-function abrirFormLancamento(linha){
-  const painel = document.getElementById('painel-lancamento');
+function abrirFormLancamento(linha, alvoId, aoSalvar){
+  const painel = document.getElementById(alvoId || 'painel-lancamento');
+  const salvarDepois = aoSalvar || carregarFaturamentos;
+  const mostraProtocolo = linha.status !== 'pendente';
   painel.innerHTML = `
     <div class="cartao" style="background:#F8FAFC;">
-      <h2>${escapeHtml(linha.convenio_nome)} · ${escapeHtml(linha.prestador_nome)} · ${linha.tipo} · ${linha.competencia}</h2>
+      <h2>${escapeHtml(linha.convenio_nome)} · ${escapeHtml(linha.prestador_nome)} · ${linha.tipo} · ${formatarCompetencia(linha.competencia)}</h2>
       <div class="linha-form">
         <div class="campo"><label>Status</label>
           <select id="lf-status">
@@ -281,32 +328,49 @@ function abrirFormLancamento(linha){
         <div class="campo"><label><input type="checkbox" id="lf-mes-completo" ${linha.mes_completo ? 'checked' : ''}> Mês completo</label></div>
         <div class="campo"><label>Faturado de</label><input type="date" id="lf-faturado-de" value="${linha.faturado_de ? String(linha.faturado_de).slice(0, 10) : ''}"></div>
         <div class="campo"><label>Faturado até</label><input type="date" id="lf-faturado-ate" value="${linha.faturado_ate ? String(linha.faturado_ate).slice(0, 10) : ''}"></div>
+      </div>
+      <div class="linha-form" id="lf-protocolo-wrap" ${mostraProtocolo ? '' : 'hidden'}>
+        <div class="campo"><label>Protocolo</label><input type="text" id="lf-protocolo" value="${escapeHtml(linha.protocolo || '')}"></div>
+        <div class="campo"><label>Valor (R$)</label><input type="number" step="0.01" min="0" id="lf-valor" value="${linha.valor ?? ''}"></div>
+      </div>
+      <div class="linha-form">
         <div class="campo" style="flex:1;"><label>Observação</label><textarea id="lf-observacao" rows="1" style="width:100%;">${escapeHtml(linha.observacao || '')}</textarea></div>
       </div>
       <button class="btn" id="lf-salvar">Salvar</button>
+      ${linha.status === 'enviado_falta_anexo' ? '<button class="btn secundario" id="lf-marcar-faturado">Marcar como Faturado</button>' : ''}
       <button class="btn secundario" id="lf-cancelar">Cancelar</button>
       <div class="erro-login" id="lf-erro"></div>
     </div>
   `;
+  document.getElementById('lf-status').addEventListener('change', (e) => {
+    document.getElementById('lf-protocolo-wrap').hidden = e.target.value === 'pendente';
+  });
   document.getElementById('lf-cancelar').addEventListener('click', () => { painel.innerHTML = ''; });
-  document.getElementById('lf-salvar').addEventListener('click', async () => {
+
+  async function salvar(statusForcado){
     const corpo = {
       convenio_id: linha.convenio_id,
       prestador_id: linha.prestador_id,
       tipo: linha.tipo,
       competencia: linha.competencia,
-      status: document.getElementById('lf-status').value,
+      status: statusForcado || document.getElementById('lf-status').value,
       mes_completo: document.getElementById('lf-mes-completo').checked,
       faturado_de: document.getElementById('lf-faturado-de').value || null,
       faturado_ate: document.getElementById('lf-faturado-ate').value || null,
+      protocolo: document.getElementById('lf-protocolo').value.trim() || null,
+      valor: document.getElementById('lf-valor').value ? Number(document.getElementById('lf-valor').value) : null,
       observacao: document.getElementById('lf-observacao').value.trim() || null,
     };
     try{
       await api('/faturamentos', { method: 'POST', body: JSON.stringify(corpo) });
       painel.innerHTML = '';
-      await carregarFaturamentos();
+      await salvarDepois();
     }catch(err){ document.getElementById('lf-erro').textContent = err.message; }
-  });
+  }
+
+  document.getElementById('lf-salvar').addEventListener('click', () => salvar());
+  const btnMarcarFaturado = document.getElementById('lf-marcar-faturado');
+  if (btnMarcarFaturado) btnMarcarFaturado.addEventListener('click', () => salvar('faturado'));
 }
 
 async function mostrarHistorico(faturamentoId){
@@ -630,26 +694,35 @@ async function renderVinculos(){
 async function renderAtribuicoes(){
   const alvo = document.getElementById('cadastros-conteudo');
   alvo.innerHTML = '<div class="vazio">Carregando...</div>';
-  const [atribuicoes, usuarios, prestadores, convenios] = await Promise.all([
+  const [vinculos, atribuicoes, usuarios, prestadores, convenios] = await Promise.all([
+    api('/vinculos').then(d => d.vinculos).catch(() => []),
     api('/atribuicoes').then(d => d.atribuicoes).catch(() => []),
     api('/usuarios').then(d => d.usuarios).catch(() => []),
     api('/prestadores').then(d => d.prestadores).catch(() => []),
     api('/convenios').then(d => d.convenios).catch(() => []),
   ]);
   const faturistas = usuarios.filter(u => u.ativo);
+  const responsavelPorPar = new Map(atribuicoes.map(a => [`${a.prestador_id}:${a.convenio_id}`, a]));
+
   alvo.innerHTML = `
     <div class="cartao">
       <h2>Nova atribuição</h2>
-      <div class="linha-form">
-        <div class="campo"><label>Faturista</label><select id="at-usuario">${faturistas.map(u => `<option value="${u.id}">${escapeHtml(u.nome)}</option>`).join('')}</select></div>
-        <div class="campo"><label>Prestador</label><select id="at-prestador">${prestadores.map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}</select></div>
-        <div class="campo"><label>Convênio</label><select id="at-convenio">${convenios.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('')}</select></div>
-        <button class="btn" id="at-criar">Atribuir</button>
+      <p class="subtitulo">Marque um ou mais prestadores/convênios e escolha o faturista responsável.</p>
+      <div class="filtros">
+        <div class="campo"><label>Filtrar por prestador</label><select id="na-filtro-prestador"><option value="">Todos</option>${prestadores.map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}</select></div>
+        <div class="campo"><label>Filtrar por convênio</label><select id="na-filtro-convenio"><option value="">Todos</option>${convenios.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('')}</select></div>
+        <div class="campo"><label>Atribuir a</label><select id="na-usuario">${faturistas.map(u => `<option value="${u.id}">${escapeHtml(u.nome)}</option>`).join('')}</select></div>
+        <button class="btn" id="na-atribuir">Atribuir selecionados</button>
       </div>
-      <div class="erro-login" id="at-erro"></div>
+      <div class="erro-login" id="na-erro"></div>
+      <table>
+        <thead><tr><th><input type="checkbox" id="na-marcar-todos"></th><th>Prestador</th><th>Convênio</th><th>Responsável atual</th></tr></thead>
+        <tbody id="na-corpo"></tbody>
+      </table>
     </div>
     <div class="cartao">
-      <table><thead><tr><th>Funcionário</th><th>Prestador</th><th>Convênio</th><th></th></tr></thead><tbody>
+      <h2>Atribuições atuais</h2>
+      <table><thead><tr><th>Faturista</th><th>Prestador</th><th>Convênio</th><th></th></tr></thead><tbody>
         ${atribuicoes.map(a => `
           <tr>
             <td>${escapeHtml(a.usuario_nome)}</td>
@@ -661,18 +734,51 @@ async function renderAtribuicoes(){
       </tbody></table>
     </div>
   `;
-  document.getElementById('at-criar').addEventListener('click', async () => {
-    const erroEl = document.getElementById('at-erro');
+
+  function renderLinhasVinculos(){
+    const fPrestador = document.getElementById('na-filtro-prestador').value;
+    const fConvenio = document.getElementById('na-filtro-convenio').value;
+    const corpo = document.getElementById('na-corpo');
+    const filtrados = vinculos.filter(v =>
+      (!fPrestador || v.prestador_id === Number(fPrestador)) &&
+      (!fConvenio || v.convenio_id === Number(fConvenio))
+    );
+    if (!filtrados.length){ corpo.innerHTML = '<tr><td colspan="4" class="vazio">Nenhum vínculo encontrado pra esse filtro.</td></tr>'; return; }
+    corpo.innerHTML = filtrados.map(v => {
+      const resp = responsavelPorPar.get(`${v.prestador_id}:${v.convenio_id}`);
+      return `<tr>
+        <td><input type="checkbox" class="na-check" data-prestador="${v.prestador_id}" data-convenio="${v.convenio_id}"></td>
+        <td>${escapeHtml(v.prestador_nome)}</td>
+        <td>${escapeHtml(v.convenio_nome)}</td>
+        <td>${resp ? escapeHtml(resp.usuario_nome) : '—'}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('na-marcar-todos').checked = false;
+  }
+  renderLinhasVinculos();
+  document.getElementById('na-filtro-prestador').addEventListener('change', renderLinhasVinculos);
+  document.getElementById('na-filtro-convenio').addEventListener('change', renderLinhasVinculos);
+  document.getElementById('na-marcar-todos').addEventListener('change', (e) => {
+    document.querySelectorAll('.na-check').forEach(chk => { chk.checked = e.target.checked; });
+  });
+
+  document.getElementById('na-atribuir').addEventListener('click', async () => {
+    const erroEl = document.getElementById('na-erro');
     erroEl.textContent = '';
+    const usuario_id = Number(document.getElementById('na-usuario').value);
+    const selecionados = [...document.querySelectorAll('.na-check:checked')].map(chk => ({
+      prestador_id: Number(chk.dataset.prestador),
+      convenio_id: Number(chk.dataset.convenio),
+    }));
+    if (!selecionados.length){ erroEl.textContent = 'Selecione ao menos um prestador/convênio.'; return; }
     try{
-      await api('/atribuicoes', { method: 'POST', body: JSON.stringify({
-        usuario_id: Number(document.getElementById('at-usuario').value),
-        prestador_id: Number(document.getElementById('at-prestador').value),
-        convenio_id: Number(document.getElementById('at-convenio').value),
-      }) });
+      for (const par of selecionados){
+        await api('/atribuicoes', { method: 'POST', body: JSON.stringify({ usuario_id, ...par }) });
+      }
       renderAtribuicoes();
     }catch(err){ erroEl.textContent = err.message; }
   });
+
   alvo.querySelectorAll('[data-excluir-atribuicao]').forEach(btn => btn.addEventListener('click', async () => {
     if (!confirm('Remover essa atribuição?')) return;
     await api(`/atribuicoes?id=${btn.dataset.excluirAtribuicao}`, { method: 'DELETE' });
