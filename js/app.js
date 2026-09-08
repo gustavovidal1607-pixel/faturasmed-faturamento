@@ -213,6 +213,8 @@ function renderPainelLinhas(){
   html += '</div>';
   alvo.innerHTML = html;
 
+  alvo.innerHTML = html;
+
   alvo.querySelectorAll('[data-lancar]').forEach(btn => btn.addEventListener('click', () => {
     abrirFormLancamento(painelLinhasCache[Number(btn.dataset.lancar)], 'painel-lancamento', async () => {
       painelDados = await api('/dashboard');
@@ -239,7 +241,6 @@ function renderPainelLinhas(){
       montarPainel();
     }catch(err){ alert(err.message); }
   }));
-  alvo.innerHTML = html;
 }
 
 // ---------------- Faturamentos ----------------
@@ -342,6 +343,7 @@ function abrirFormLancamento(linha, alvoId, aoSalvar){
       <div class="erro-login" id="lf-erro"></div>
     </div>
   `;
+  painel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   document.getElementById('lf-status').addEventListener('change', (e) => {
     document.getElementById('lf-protocolo-wrap').hidden = e.target.value === 'pendente';
   });
