@@ -195,6 +195,10 @@ const PAINEL_ABAS = [
   { id: 'enviado_falta_anexo', label: 'Pendente anexo' },
   { id: 'faturado', label: 'Faturados' },
 ];
+// No Controle de faturamento a sub-aba "pendente" virou a visão geral
+// (mostra tudo, não só pendências) -- rótulo diferente só ali; em
+// Atividades da equipe o rótulo "Pendente" continua fazendo sentido.
+const CONTROLE_ABAS = PAINEL_ABAS.map(aba => aba.id === 'pendente' ? { ...aba, label: 'Geral' } : aba);
 const ORDEM_TIPO = ['SADT', 'CONSULTA', 'GIH'];
 
 let painelDados = null;
@@ -248,7 +252,7 @@ function montarPainel(){
           <button class="btn secundario" id="pn-limpar">Limpar filtros</button>
         </div>
         <div class="grade-kpi compacta" id="painel-kpis">
-          ${PAINEL_ABAS.map(aba => `<div class="kpi compacto cor-${aba.id} ${painelSubaba === aba.id ? 'ativa' : ''}" data-sub="${aba.id}">
+          ${CONTROLE_ABAS.map(aba => `<div class="kpi compacto cor-${aba.id} ${painelSubaba === aba.id ? 'ativa' : ''}" data-sub="${aba.id}">
             <div class="rotulo">${aba.label}</div>
             <div class="numero">${contagens[aba.id] || 0}</div>
           </div>`).join('')}
