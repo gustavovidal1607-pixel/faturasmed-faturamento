@@ -1041,26 +1041,6 @@ async function renderAtribuicoes(){
 
 // ---------------- Atividades da equipe (admin) ----------------
 
-let atividadesCharts = [];
-
-const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-let chartJsPromise = null;
-function carregarChartJs(){
-  if (window.Chart) return Promise.resolve();
-  if (!chartJsPromise){
-    chartJsPromise = new Promise((resolve, reject) => {
-      const limite = setTimeout(() => { chartJsPromise = null; reject(new Error('A biblioteca de gráficos demorou demais pra carregar (verifique a conexão).')); }, TEMPO_LIMITE_MS);
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js';
-      script.onload = () => { clearTimeout(limite); resolve(); };
-      script.onerror = () => { clearTimeout(limite); chartJsPromise = null; reject(new Error('Não foi possível carregar a biblioteca de gráficos (verifique a conexão).')); };
-      document.head.appendChild(script);
-    });
-  }
-  return chartJsPromise;
-}
-
 async function renderAtividades(){
   const cont = document.getElementById('conteudo');
   const anoAtual = Number(hojeBrasilAno());
@@ -1091,67 +1071,49 @@ async function carregarAtividades(){
   const ano = document.getElementById('at-ano').value;
   const alvo = document.getElementById('atividades-conteudo');
   alvo.innerHTML = '<div class="vazio">Carregando...</div>';
-  atividadesCharts.forEach(c => c.destroy());
-  atividadesCharts = [];
   try{
     const data = await api('/atividades?ano=' + ano);
     if (!data.usuarios.length){ alvo.innerHTML = '<div class="cartao"><div class="vazio">Nenhuma atividade registrada nesse ano.</div></div>'; return; }
 
-    const totaisPorMes = new Map(); // mes ('1'..'12') -> total, pra desenhar os 12 meses mesmo sem atividade
-    for (let m = 1; m <= 12; m++) totaisPorMes.set(String(m).padStart(2, '0'), 0);
-
-    alvo.innerHTML = data.usuarios.map(u => {
-      return `
+    alvo.innerHTML = data.usuarios.map(u => `
       <div class="cartao">
         <h2>${escapeHtml(u.usuario_nome)} <span class="resumo">· ${u.total} ação(ões) em ${ano}</span></h2>
         <div class="grade-kpi">
           ${PAINEL_ABAS.map(aba => `<div class="kpi cor-${aba.id}"><div class="rotulo">${aba.label}</div><div class="numero">${u.total_por_status[aba.id] || 0}</div></div>`).join('')}
         </div>
-        <div style="height:220px;"><canvas id="grafico-${u.usuario_id}"></canvas></div>
-        <h3 style="margin-top:20px;">Por mês</h3>
-        ${u.por_mes.length ? u.por_mes.slice().reverse().map(m => `
+        ${u.por_mes.length ? u.por_mes.slice().reverse().map(m => {
+          const porDia = new Map();
+          for (const it of m.itens){
+            if (!porDia.has(it.dia)) porDia.set(it.dia, []);
+            porDia.get(it.dia).push(it);
+          }
+          const dias = [...porDia.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+          return `
           <details class="grupo-prestador">
             <summary>
               <span class="nome-prestador">${formatarCompetencia(m.mes)}</span>
               <span class="resumo">${m.total} ação(ões)</span>
             </summary>
             <div class="conteudo-grupo">
-              <table><thead><tr><th>Dia</th><th>Hora</th><th>Convênio</th><th>Prestador</th><th>Tipo</th><th>Status</th></tr></thead><tbody>
-                ${m.itens.map(it => `<tr><td>${formatarData(it.dia)}</td><td>${formatarHora(it.criado_em)}</td><td>${escapeHtml(it.convenio_nome)}</td><td>${escapeHtml(it.prestador_nome)}</td><td>${it.tipo}</td><td><span class="selo ${it.status}">${rotuloStatus(it.status)}</span></td></tr>`).join('')}
-              </tbody></table>
+              ${dias.map(([dia, itens]) => `
+                <details class="grupo-prestador">
+                  <summary>
+                    <span class="nome-prestador">${formatarData(dia)}</span>
+                    <span class="resumo">${itens.length} ação(ões)</span>
+                  </summary>
+                  <div class="conteudo-grupo">
+                    <table><thead><tr><th>Hora</th><th>Prestador</th><th>O que foi feito</th></tr></thead><tbody>
+                      ${itens.map(it => `<tr><td>${formatarHora(it.criado_em)}</td><td>${escapeHtml(it.prestador_nome)}</td><td>${escapeHtml(it.convenio_nome)} · ${it.tipo} · <span class="selo ${it.status}">${rotuloStatus(it.status)}</span></td></tr>`).join('')}
+                    </tbody></table>
+                  </div>
+                </details>
+              `).join('')}
             </div>
           </details>
-        `).join('') : '<div class="vazio">Nenhuma ação nesse ano.</div>'}
+        `;
+        }).join('') : '<div class="vazio">Nenhuma ação nesse ano.</div>'}
       </div>
-    `;
-    }).join('');
-
-    try{
-      await carregarChartJs();
-      for (const u of data.usuarios){
-        const porMesCompleto = new Map(totaisPorMes);
-        for (const m of u.por_mes) porMesCompleto.set(m.mes.slice(5, 7), m.total);
-        const ctx = document.getElementById(`grafico-${u.usuario_id}`);
-        const chart = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: MESES_ABREV,
-            datasets: [{ label: 'Ações', data: [...porMesCompleto.values()], backgroundColor: '#1D4FC4', borderRadius: 4 }],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
-          },
-        });
-        atividadesCharts.push(chart);
-      }
-    }catch(erroGrafico){
-      // Dados e detalhe por mês continuam visíveis mesmo se o gráfico
-      // (biblioteca externa) não carregar por algum bloqueio de rede.
-      document.querySelectorAll('[id^="grafico-"]').forEach(c => { c.outerHTML = `<div class="vazio">${escapeHtml(erroGrafico.message)}</div>`; });
-    }
+    `).join('');
   }catch(err){ alvo.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
 }
 
