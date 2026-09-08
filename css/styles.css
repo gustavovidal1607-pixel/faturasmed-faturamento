@@ -120,8 +120,6 @@ main{
   flex: 1;
   min-width: 0;
   padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
 }
 
 .barra-lembretes{
