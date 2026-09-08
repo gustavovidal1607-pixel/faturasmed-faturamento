@@ -100,7 +100,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === 'POST'){
-      const { faturamento_id, convenio_id, prestador_id, tipo, competencia, protocolo, valor, data, status, quantidade_guias } = req.body || {};
+      const { faturamento_id, convenio_id, prestador_id, tipo, competencia, protocolo, valor, data, status, quantidade_guias, observacao } = req.body || {};
       if (!protocolo || !protocolo.trim()){ res.status(400).json({ erro: 'Informe o protocolo.' }); return; }
       if (tipo && !TIPOS_VALIDOS.includes(tipo)){ res.status(400).json({ erro: 'Tipo inválido.' }); return; }
       const faturamento = await garantirFaturamento({ faturamento_id, convenio_id, prestador_id, tipo, competencia });
@@ -108,8 +108,8 @@ module.exports = async (req, res) => {
       if (faturamento === undefined){ res.status(403).json({ erro: 'Você não é responsável por esse prestador/convênio.' }); return; }
       const statusFinal = STATUS_VALIDOS.includes(status) ? status : 'enviado_falta_anexo';
       const inserido = await db`
-        INSERT INTO faturamentos_protocolos (faturamento_id, protocolo, valor, data, status, quantidade_guias, criado_por)
-        VALUES (${faturamento.id}, ${protocolo.trim()}, ${valor ?? null}, ${data || null}, ${statusFinal}, ${quantidade_guias || null}, ${usuario.id})
+        INSERT INTO faturamentos_protocolos (faturamento_id, protocolo, valor, data, status, quantidade_guias, observacao, criado_por)
+        VALUES (${faturamento.id}, ${protocolo.trim()}, ${valor ?? null}, ${data || null}, ${statusFinal}, ${quantidade_guias || null}, ${observacao || null}, ${usuario.id})
         RETURNING *
       `;
       await recalcularStatus(db, faturamento.id, usuario.id);

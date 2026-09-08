@@ -205,12 +205,12 @@ let painelDados = null;
 let painelSubaba = 'pendente';
 let painelConvenios = [];
 let painelPrestadores = [];
-let painelFiltro = { competencia: '', convenio_id: '', prestador_id: '' };
+let painelFiltro = { competencia: '', convenio_id: '', prestador_id: '', data_de: '', data_ate: '' };
 
 async function renderPainel(){
   const cont = document.getElementById('conteudo');
   cont.innerHTML = '<div class="vazio">Carregando...</div>';
-  painelFiltro = { competencia: competenciaAtualBrasil(), convenio_id: '', prestador_id: '' };
+  painelFiltro = { competencia: competenciaAtualBrasil(), convenio_id: '', prestador_id: '', data_de: '', data_ate: '' };
   painelSubaba = 'pendente';
   try{
     await buscarPainel();
@@ -248,6 +248,8 @@ function montarPainel(){
           <div class="campo"><label>Competência</label><input type="month" id="pn-competencia" value="${painelFiltro.competencia}"></div>
           <div class="campo"><label>Convênio</label><select id="pn-convenio"><option value="">Todos</option>${painelConvenios.map(c => `<option value="${c.id}" ${String(c.id) === String(painelFiltro.convenio_id) ? 'selected' : ''}>${escapeHtml(c.nome)}</option>`).join('')}</select></div>
           <div class="campo"><label>Prestador</label><select id="pn-prestador"><option value="">Todos</option>${painelPrestadores.map(p => `<option value="${p.id}" ${String(p.id) === String(painelFiltro.prestador_id) ? 'selected' : ''}>${escapeHtml(p.nome)}</option>`).join('')}</select></div>
+          <div class="campo"><label>Protocolos de</label><input type="date" id="pn-data-de" value="${painelFiltro.data_de || ''}"></div>
+          <div class="campo"><label>até</label><input type="date" id="pn-data-ate" value="${painelFiltro.data_ate || ''}"></div>
           <button class="btn" id="pn-filtrar">Filtrar</button>
           <button class="btn secundario" id="pn-limpar">Limpar filtros</button>
         </div>
@@ -276,13 +278,15 @@ function montarPainel(){
       competencia: document.getElementById('pn-competencia').value || painelFiltro.competencia,
       convenio_id: document.getElementById('pn-convenio').value,
       prestador_id: document.getElementById('pn-prestador').value,
+      data_de: document.getElementById('pn-data-de').value || '',
+      data_ate: document.getElementById('pn-data-ate').value || '',
     };
     painelSubaba = 'pendente';
     buscarPainel();
   });
 
   document.getElementById('pn-limpar').addEventListener('click', () => {
-    painelFiltro = { competencia: competenciaAtualBrasil(), convenio_id: '', prestador_id: '' };
+    painelFiltro = { competencia: competenciaAtualBrasil(), convenio_id: '', prestador_id: '', data_de: '', data_ate: '' };
     painelSubaba = 'pendente';
     buscarPainel();
   });
@@ -369,7 +373,10 @@ async function renderConteudoTipo(idx, filtro){
   const linha = painelLinhasCache[idx];
   const alvo = document.getElementById(`tipo-conteudo-${idx}`);
   if (!linha || !alvo) return;
-  filtro = filtro || {};
+  // Sem filtro explícito (primeira vez que abre), usa o período global
+  // do filtro principal -- assim não precisa configurar De/Até um a um
+  // em cada prestador.
+  filtro = filtro || { de: painelFiltro.data_de || null, ate: painelFiltro.data_ate || null };
   alvo.innerHTML = '<div class="vazio">Carregando...</div>';
   try{
     const params = new URLSearchParams({ convenio_id: linha.convenio_id, prestador_id: linha.prestador_id, tipo: linha.tipo });
@@ -379,11 +386,6 @@ async function renderConteudoTipo(idx, filtro){
     const total = protocolos.reduce((soma, p) => soma + (p.valor != null ? Number(p.valor) : 0), 0);
 
     let html = `
-      <div class="campo" style="margin-bottom:14px;">
-        <label>Observação</label>
-        <textarea id="obs-${idx}" rows="2" style="width:100%;">${escapeHtml(linha.observacao || '')}</textarea>
-        <button class="btn secundario pequeno" id="obs-salvar-${idx}" style="margin-top:6px;width:fit-content;">Salvar observação</button>
-      </div>
       <p class="subtitulo" style="margin:0 0 10px;">Histórico completo desse prestador+tipo, em qualquer competência.</p>
       <div class="linha-form">
         <div class="campo"><label>De</label><input type="date" id="pf-de-${idx}" value="${filtro.de || ''}"></div>
@@ -395,7 +397,7 @@ async function renderConteudoTipo(idx, filtro){
       html += '<table><thead><tr><th>Protocolo</th><th>Competência</th><th>Data</th><th>Guias</th><th>Valor</th><th>Status</th><th></th></tr></thead><tbody>';
       for (const p of protocolos){
         html += `<tr>
-          <td>${escapeHtml(p.protocolo)}</td>
+          <td>${escapeHtml(p.protocolo)}${p.observacao ? `<div class="particularidade-txt">${escapeHtml(p.observacao)}</div>` : ''}</td>
           <td>${formatarCompetencia(p.competencia)}</td>
           <td>${p.data ? formatarData(p.data) : '—'}</td>
           <td>${p.quantidade_guias ?? '—'}</td>
@@ -418,30 +420,28 @@ async function renderConteudoTipo(idx, filtro){
         <div class="campo"><label>Status</label>
           <select id="np-status-${idx}">${Object.entries(ROTULOS_STATUS).map(([v, l]) => `<option value="${v}" ${v === 'enviado_falta_anexo' ? 'selected' : ''}>${l}</option>`).join('')}</select>
         </div>
-        <button class="btn secundario" id="np-adicionar-${idx}">Adicionar protocolo</button>
       </div>
+      <div class="campo" id="np-obs-wrap-${idx}" hidden style="margin-bottom:10px;max-width:400px;">
+        <label>Observação desse protocolo</label>
+        <textarea id="np-observacao-${idx}" rows="2" style="width:100%;"></textarea>
+      </div>
+      <button class="btn secundario pequeno" id="np-toggle-obs-${idx}">Adicionar observação</button>
+      <button class="btn secundario" id="np-adicionar-${idx}">Adicionar protocolo</button>
       <div class="erro-login" id="np-erro-${idx}"></div>
     `;
 
     alvo.innerHTML = html;
-
-    document.getElementById(`obs-salvar-${idx}`).addEventListener('click', async () => {
-      try{
-        await api('/faturamentos', { method: 'POST', body: JSON.stringify({
-          convenio_id: linha.convenio_id,
-          prestador_id: linha.prestador_id,
-          tipo: linha.tipo,
-          competencia: linha.competencia,
-          observacao: document.getElementById(`obs-${idx}`).value.trim() || null,
-        }) });
-      }catch(err){ alert(err.message); }
-    });
 
     document.getElementById(`pf-filtrar-${idx}`).addEventListener('click', () => {
       renderConteudoTipo(idx, {
         de: document.getElementById(`pf-de-${idx}`).value || null,
         ate: document.getElementById(`pf-ate-${idx}`).value || null,
       });
+    });
+
+    document.getElementById(`np-toggle-obs-${idx}`).addEventListener('click', () => {
+      document.getElementById(`np-obs-wrap-${idx}`).hidden = false;
+      document.getElementById(`np-toggle-obs-${idx}`).hidden = true;
     });
 
     alvo.querySelectorAll('[data-status-protocolo]').forEach(sel => sel.addEventListener('change', async () => {
@@ -474,6 +474,7 @@ async function renderConteudoTipo(idx, filtro){
           quantidade_guias: document.getElementById(`np-guias-${idx}`).value ? Number(document.getElementById(`np-guias-${idx}`).value) : null,
           valor: mascaraMoedaParaNumero(document.getElementById(`np-valor-${idx}`).value),
           status: document.getElementById(`np-status-${idx}`).value,
+          observacao: document.getElementById(`np-observacao-${idx}`).value.trim() || null,
         }) });
         linha.faturamento_id = resposta.faturamento_id;
         await renderConteudoTipo(idx, filtro);

@@ -21,7 +21,7 @@ async function ensureSchema(){
     // existe, o resto com certeza também já rodou antes -- pula tudo e
     // economiza esses round-trips no caminho comum. Só funciona se toda
     // migração nova for sempre adicionada no FINAL desta sequência.
-    const jaMigrado = await db`SELECT 1 FROM information_schema.columns WHERE table_name = 'faturamentos_protocolos' AND column_name = 'quantidade_guias'`;
+    const jaMigrado = await db`SELECT 1 FROM information_schema.columns WHERE table_name = 'faturamentos_protocolos' AND column_name = 'observacao'`;
     if (jaMigrado.length) return;
 
     await db`CREATE TABLE IF NOT EXISTS usuarios (
@@ -197,6 +197,10 @@ async function ensureSchema(){
     // Quantidade de guias daquele protocolo (um protocolo pode agrupar
     // várias guias enviadas juntas).
     await db`ALTER TABLE faturamentos_protocolos ADD COLUMN IF NOT EXISTS quantidade_guias INTEGER`;
+
+    // Observação é por protocolo (cada um pode ter uma particularidade
+    // diferente), não mais um campo único pro lançamento inteiro.
+    await db`ALTER TABLE faturamentos_protocolos ADD COLUMN IF NOT EXISTS observacao TEXT`;
   })();
   schemaReady.catch(() => { schemaReady = null; });
   return schemaReady;
