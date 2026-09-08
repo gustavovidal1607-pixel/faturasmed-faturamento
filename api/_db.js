@@ -21,7 +21,7 @@ async function ensureSchema(){
     // existe, o resto com certeza também já rodou antes -- pula tudo e
     // economiza esses round-trips no caminho comum. Só funciona se toda
     // migração nova for sempre adicionada no FINAL desta sequência.
-    const jaMigrado = await db`SELECT 1 FROM information_schema.tables WHERE table_name = 'faturamentos_protocolos'`;
+    const jaMigrado = await db`SELECT 1 FROM information_schema.columns WHERE table_name = 'faturamentos_protocolos' AND column_name = 'quantidade_guias'`;
     if (jaMigrado.length) return;
 
     await db`CREATE TABLE IF NOT EXISTS usuarios (
@@ -186,6 +186,17 @@ async function ensureSchema(){
       criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )`;
     await db`CREATE INDEX IF NOT EXISTS idx_faturamentos_protocolos_faturamento ON faturamentos_protocolos(faturamento_id)`;
+
+    // Cada protocolo tem seu próprio status (o lançamento em si continua
+    // com o dele, que é quem decide a sub-aba) -- vai de pendente até
+    // faturado, mesmo progresso usado em todo o resto do sistema.
+    await db`ALTER TABLE faturamentos_protocolos ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'enviado_falta_anexo'`;
+    await db`ALTER TABLE faturamentos_protocolos DROP CONSTRAINT IF EXISTS faturamentos_protocolos_status_check`;
+    await db`ALTER TABLE faturamentos_protocolos ADD CONSTRAINT faturamentos_protocolos_status_check CHECK (status IN ('pendente','enviado_falta_anexo','faturado'))`;
+
+    // Quantidade de guias daquele protocolo (um protocolo pode agrupar
+    // várias guias enviadas juntas).
+    await db`ALTER TABLE faturamentos_protocolos ADD COLUMN IF NOT EXISTS quantidade_guias INTEGER`;
   })();
   schemaReady.catch(() => { schemaReady = null; });
   return schemaReady;

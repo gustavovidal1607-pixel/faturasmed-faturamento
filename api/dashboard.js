@@ -48,12 +48,31 @@ module.exports = async (req, res) => {
       .sort((a, b) => b.total - a.total)
       .slice(0, MAX_RANKING_PENDENCIAS);
 
+    // Quantos protocolos já foram marcados "faturado" na competência
+    // atual de verdade (mês corrente, não a competência que porventura
+    // esteja sendo filtrada na tela) -- mostrado ao lado do nome do
+    // prestador, sempre baseado na data de hoje.
+    const competenciaReal = competenciaAtual();
+    let protocolosFaturadosMes = await db`
+      SELECT f.prestador_id, COUNT(*) AS quantidade
+      FROM faturamentos_protocolos p
+      JOIN faturamentos f ON f.id = p.faturamento_id
+      WHERE p.status = 'faturado' AND f.competencia = ${competenciaReal}
+      GROUP BY f.prestador_id
+    `;
+    if (escopo !== null){
+      const prestadoresNoEscopo = new Set(escopo.map(e => e.prestador_id));
+      protocolosFaturadosMes = protocolosFaturadosMes.filter(r => prestadoresNoEscopo.has(r.prestador_id));
+    }
+
     res.status(200).json({
       competencia,
+      competencia_atual: competenciaReal,
       prazos_proximos: prazosProximos,
       faturamentos: linhas,
       total_pendentes: pendentes.length,
       ranking_pendencias: rankingPendencias,
+      protocolos_faturados_mes: Object.fromEntries(protocolosFaturadosMes.map(r => [r.prestador_id, Number(r.quantidade)])),
     });
   }catch(err){
     console.error('dashboard error', err);

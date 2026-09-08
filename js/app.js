@@ -30,6 +30,14 @@ function formatarDataHora(iso){
 function formatarHora(iso){
   return new Date(iso).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
 }
+// O sistema todo (prazos, competências, "hoje") se baseia sempre na data
+// real de Brasília -- nunca no relógio/fuso local do navegador de quem
+// está usando.
+function competenciaAtualBrasil(){
+  const partes = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' }).formatToParts(new Date());
+  const map = Object.fromEntries(partes.map(p => [p.type, p.value]));
+  return `${map.year}-${map.month}`;
+}
 const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 // Máscara de moeda: digita só números, a vírgula dos centavos entra
 // sozinha (ex: "150" -> "1,50", "15000" -> "150,00").
@@ -193,8 +201,7 @@ let painelFiltro = { competencia: '', convenio_id: '', prestador_id: '' };
 async function renderPainel(){
   const cont = document.getElementById('conteudo');
   cont.innerHTML = '<div class="vazio">Carregando...</div>';
-  const hoje = new Date();
-  painelFiltro = { competencia: `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`, convenio_id: '', prestador_id: '' };
+  painelFiltro = { competencia: competenciaAtualBrasil(), convenio_id: '', prestador_id: '' };
   try{
     [painelConvenios, painelPrestadores] = await Promise.all([
       api('/convenios').then(d => d.convenios).catch(() => []),
@@ -262,8 +269,7 @@ function montarPainel(){
   });
 
   document.getElementById('pn-limpar').addEventListener('click', () => {
-    const hoje = new Date();
-    painelFiltro = { competencia: `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`, convenio_id: '', prestador_id: '' };
+    painelFiltro = { competencia: competenciaAtualBrasil(), convenio_id: '', prestador_id: '' };
     painelSubaba = 'pendente';
     buscarPainel();
   });
@@ -314,11 +320,12 @@ function renderPainelLinhas(){
     for (const [prestadorId, grupo] of prestadoresOrdenados){
       const chaveGrupo = `${convenioId}-${prestadorId}`;
       const tipos = new Set(grupo.idxs.map(i => linhas[i].tipo));
+      const protocolosMes = (painelDados.protocolos_faturados_mes || {})[prestadorId] || 0;
       html += `<details class="grupo-prestador">
         <summary>
           <input type="checkbox" class="pl-check-grupo" data-grupo="${chaveGrupo}" onclick="event.stopPropagation()">
           <span class="nome-prestador">${escapeHtml(grupo.nome)}</span>
-          <span class="resumo">${grupo.idxs.length} lançamento(s) · ${tipos.size} tipo(s)</span>
+          <span class="resumo">${grupo.idxs.length} lançamento(s) · ${tipos.size} tipo(s) · ${protocolosMes} protocolo(s) faturado(s) em ${formatarCompetencia(painelDados.competencia_atual)}</span>
         </summary>
         <div class="conteudo-grupo">
           <table><thead><tr><th></th><th>Competência</th><th>Tipo</th><th>Status</th>${mostrarProtocoloValor ? '<th>Protocolos</th>' : ''}<th>Observação</th><th></th></tr></thead><tbody>`;
@@ -470,7 +477,7 @@ function abrirFormLancamento(linha, aoSalvar){
       linha.faturamento_id = resposta.faturamento.id;
       linha.status = resposta.faturamento.status;
       await salvarDepois();
-      await renderProtocolosDoLancamento(linha.faturamento_id);
+      await renderProtocolosDoLancamento(linha);
     }catch(err){ document.getElementById('lf-erro').textContent = err.message; }
   }
 
@@ -478,68 +485,108 @@ function abrirFormLancamento(linha, aoSalvar){
   const btnMarcarFaturado = document.getElementById('lf-marcar-faturado');
   if (btnMarcarFaturado) btnMarcarFaturado.addEventListener('click', () => salvar('faturado'));
 
-  renderProtocolosDoLancamento(linha.faturamento_id);
+  renderProtocolosDoLancamento(linha);
 }
 
-async function renderProtocolosDoLancamento(faturamentoId){
+async function renderProtocolosDoLancamento(linha, filtro){
   const alvo = document.getElementById('lf-protocolos-conteudo');
   if (!alvo) return; // modal já foi fechado
-  if (!faturamentoId){
-    alvo.innerHTML = '<div class="vazio">Salve o lançamento (escolha um status) antes de adicionar protocolos.</div>';
-    return;
-  }
+  filtro = filtro || {};
   alvo.innerHTML = '<div class="vazio">Carregando...</div>';
   try{
-    const { protocolos } = await api('/protocolos?faturamento_id=' + faturamentoId);
+    const params = new URLSearchParams({ convenio_id: linha.convenio_id, prestador_id: linha.prestador_id, tipo: linha.tipo });
+    if (filtro.de) params.set('data_de', filtro.de);
+    if (filtro.ate) params.set('data_ate', filtro.ate);
+    const { protocolos } = await api('/protocolos?' + params.toString());
     const total = protocolos.reduce((soma, p) => soma + (p.valor != null ? Number(p.valor) : 0), 0);
-    let html = '';
+
+    let html = `
+      <p class="subtitulo" style="margin:0 0 10px;">Histórico completo desse prestador+tipo, em qualquer competência.</p>
+      <div class="linha-form">
+        <div class="campo"><label>De</label><input type="date" id="pf-de" value="${filtro.de || ''}"></div>
+        <div class="campo"><label>Até</label><input type="date" id="pf-ate" value="${filtro.ate || ''}"></div>
+        <button class="btn secundario pequeno" id="pf-filtrar">Filtrar</button>
+      </div>
+    `;
     if (protocolos.length){
-      html += '<table><thead><tr><th>Protocolo</th><th>Data</th><th>Valor</th><th></th></tr></thead><tbody>';
+      html += '<table><thead><tr><th>Protocolo</th><th>Competência</th><th>Data</th><th>Guias</th><th>Valor</th><th>Status</th><th></th></tr></thead><tbody>';
       for (const p of protocolos){
         html += `<tr>
           <td>${escapeHtml(p.protocolo)}</td>
+          <td>${formatarCompetencia(p.competencia)}</td>
           <td>${p.data ? formatarData(p.data) : '—'}</td>
+          <td>${p.quantidade_guias ?? '—'}</td>
           <td>${p.valor != null ? 'R$ ' + numeroParaMascaraMoeda(p.valor) : '—'}</td>
+          <td><select data-status-protocolo="${p.id}">${Object.entries(ROTULOS_STATUS).map(([v, l]) => `<option value="${v}" ${p.status === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
           <td><button class="btn perigo pequeno" data-remover-protocolo="${p.id}">Remover</button></td>
         </tr>`;
       }
-      html += `</tbody></table><p class="subtitulo" style="margin:10px 0 0;">Total faturado: <strong>R$ ${numeroParaMascaraMoeda(total)}</strong></p>`;
+      html += `</tbody></table><p class="subtitulo" style="margin:10px 0 0;">Total no filtro: <strong>R$ ${numeroParaMascaraMoeda(total)}</strong></p>`;
     }else{
-      html += '<div class="vazio">Nenhum protocolo lançado ainda.</div>';
+      html += '<div class="vazio">Nenhum protocolo encontrado.</div>';
     }
-    html += `
-      <div class="linha-form" style="margin-top:16px;">
-        <div class="campo"><label>Protocolo</label><input type="text" id="np-protocolo"></div>
-        <div class="campo"><label>Data</label><input type="date" id="np-data"></div>
-        <div class="campo"><label>Valor (R$)</label><input type="text" inputmode="numeric" id="np-valor"></div>
-        <button class="btn secundario" id="np-adicionar">Adicionar protocolo</button>
-      </div>
-      <div class="erro-login" id="np-erro"></div>
-    `;
+
+    if (linha.faturamento_id){
+      html += `
+        <div class="linha-form" style="margin-top:16px;">
+          <div class="campo"><label>Protocolo</label><input type="text" id="np-protocolo"></div>
+          <div class="campo"><label>Data</label><input type="date" id="np-data"></div>
+          <div class="campo"><label>Qtd. guias</label><input type="number" min="1" id="np-guias" style="width:80px;"></div>
+          <div class="campo"><label>Valor (R$)</label><input type="text" inputmode="numeric" id="np-valor"></div>
+          <div class="campo"><label>Status</label>
+            <select id="np-status">${Object.entries(ROTULOS_STATUS).map(([v, l]) => `<option value="${v}" ${v === 'enviado_falta_anexo' ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          </div>
+          <button class="btn secundario" id="np-adicionar">Adicionar protocolo</button>
+        </div>
+        <div class="erro-login" id="np-erro"></div>
+      `;
+    }else{
+      html += '<div class="vazio" style="margin-top:16px;">Salve o lançamento (escolha um status acima) antes de adicionar um novo protocolo.</div>';
+    }
+
     alvo.innerHTML = html;
-    aplicarMascaraMoeda(document.getElementById('np-valor'));
+
+    document.getElementById('pf-filtrar').addEventListener('click', () => {
+      renderProtocolosDoLancamento(linha, {
+        de: document.getElementById('pf-de').value || null,
+        ate: document.getElementById('pf-ate').value || null,
+      });
+    });
+
+    alvo.querySelectorAll('[data-status-protocolo]').forEach(sel => sel.addEventListener('change', async () => {
+      try{
+        await api(`/protocolos?id=${sel.dataset.statusProtocolo}`, { method: 'PATCH', body: JSON.stringify({ status: sel.value }) });
+        await salvarBarraSilenciosa();
+      }catch(err){ alert(err.message); }
+    }));
     alvo.querySelectorAll('[data-remover-protocolo]').forEach(btn => btn.addEventListener('click', async () => {
       if (!confirm('Remover esse protocolo?')) return;
       await api(`/protocolos?id=${btn.dataset.removerProtocolo}`, { method: 'DELETE' });
-      await renderProtocolosDoLancamento(faturamentoId);
+      await renderProtocolosDoLancamento(linha, filtro);
       await salvarBarraSilenciosa();
     }));
-    document.getElementById('np-adicionar').addEventListener('click', async () => {
-      const erroEl = document.getElementById('np-erro');
-      erroEl.textContent = '';
-      const protocolo = document.getElementById('np-protocolo').value.trim();
-      if (!protocolo){ erroEl.textContent = 'Informe o protocolo.'; return; }
-      try{
-        await api('/protocolos', { method: 'POST', body: JSON.stringify({
-          faturamento_id: faturamentoId,
-          protocolo,
-          data: document.getElementById('np-data').value || null,
-          valor: mascaraMoedaParaNumero(document.getElementById('np-valor').value),
-        }) });
-        await renderProtocolosDoLancamento(faturamentoId);
-        await salvarBarraSilenciosa();
-      }catch(err){ erroEl.textContent = err.message; }
-    });
+    const btnAdicionar = document.getElementById('np-adicionar');
+    if (btnAdicionar){
+      aplicarMascaraMoeda(document.getElementById('np-valor'));
+      btnAdicionar.addEventListener('click', async () => {
+        const erroEl = document.getElementById('np-erro');
+        erroEl.textContent = '';
+        const protocolo = document.getElementById('np-protocolo').value.trim();
+        if (!protocolo){ erroEl.textContent = 'Informe o protocolo.'; return; }
+        try{
+          await api('/protocolos', { method: 'POST', body: JSON.stringify({
+            faturamento_id: linha.faturamento_id,
+            protocolo,
+            data: document.getElementById('np-data').value || null,
+            quantidade_guias: document.getElementById('np-guias').value ? Number(document.getElementById('np-guias').value) : null,
+            valor: mascaraMoedaParaNumero(document.getElementById('np-valor').value),
+            status: document.getElementById('np-status').value,
+          }) });
+          await renderProtocolosDoLancamento(linha, filtro);
+          await salvarBarraSilenciosa();
+        }catch(err){ erroEl.textContent = err.message; }
+      });
+    }
   }catch(err){ alvo.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
 
   async function salvarBarraSilenciosa(){
