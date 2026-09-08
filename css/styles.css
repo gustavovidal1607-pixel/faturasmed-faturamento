@@ -249,7 +249,7 @@ main{
 }
 .grupo-prestador[open] summary::before{ transform: rotate(90deg); }
 .grupo-prestador summary .nome-prestador{ font-weight: 600; }
-.grupo-prestador summary .resumo{ color: var(--muted); font-size: 12px; }
+.resumo{ color: var(--muted); font-size: 12px; font-weight: 400; }
 .grupo-prestador .conteudo-grupo{ padding: 4px 16px 14px; border-top: 1px solid var(--border); }
 
 h1{ font-size: 21px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }

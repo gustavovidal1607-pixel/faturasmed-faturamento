@@ -281,12 +281,15 @@ function renderPainelLinhas(){
   painelLinhasCache = linhas;
   if (!linhas.length){ alvo.innerHTML = '<div class="cartao"><div class="vazio">Nada aqui nessa competência.</div></div>'; return; }
 
-  const porPrestador = new Map();
+  // Hierarquia: Convênio (card) -> Prestador (grupo expansível) -> lançamentos.
+  const porConvenio = new Map();
   linhas.forEach((l, idx) => {
-    if (!porPrestador.has(l.prestador_id)) porPrestador.set(l.prestador_id, { nome: l.prestador_nome, idxs: [] });
-    porPrestador.get(l.prestador_id).idxs.push(idx);
+    if (!porConvenio.has(l.convenio_id)) porConvenio.set(l.convenio_id, { nome: l.convenio_nome, prestadores: new Map() });
+    const conv = porConvenio.get(l.convenio_id);
+    if (!conv.prestadores.has(l.prestador_id)) conv.prestadores.set(l.prestador_id, { nome: l.prestador_nome, idxs: [] });
+    conv.prestadores.get(l.prestador_id).idxs.push(idx);
   });
-  const prestadoresOrdenados = [...porPrestador.entries()].sort((a, b) => a[1].nome.localeCompare(b[1].nome));
+  const conveniosOrdenados = [...porConvenio.entries()].sort((a, b) => a[1].nome.localeCompare(b[1].nome));
   const mostrarProtocoloValor = painelSubaba !== 'pendente';
   const podeMarcarFaturado = painelSubaba === 'enviado_falta_anexo';
 
@@ -296,35 +299,40 @@ function renderPainelLinhas(){
       ${podeMarcarFaturado ? '<button class="btn secundario pequeno" id="pl-marcar-lote">Marcar selecionados como Faturado</button>' : ''}
     </div>
   `;
-  for (const [prestadorId, grupo] of prestadoresOrdenados){
-    const convenios = new Set(grupo.idxs.map(i => linhas[i].convenio_id));
-    const tipos = new Set(grupo.idxs.map(i => linhas[i].tipo));
-    html += `<details class="grupo-prestador">
-      <summary>
-        <input type="checkbox" class="pl-check-grupo" data-prestador="${prestadorId}" onclick="event.stopPropagation()">
-        <span class="nome-prestador">${escapeHtml(grupo.nome)}</span>
-        <span class="resumo">${grupo.idxs.length} lançamento(s) · ${tipos.size} tipo(s) · ${convenios.size} convênio(s)</span>
-      </summary>
-      <div class="conteudo-grupo">
-        <table><thead><tr><th></th><th>Convênio</th><th>Tipo</th><th>Competência</th><th>Status</th>${mostrarProtocoloValor ? '<th>Protocolo</th><th>Valor</th>' : ''}<th>Observação</th><th></th></tr></thead><tbody>`;
-    for (const idx of grupo.idxs){
-      const l = linhas[idx];
-      html += `<tr>
-        <td><input type="checkbox" class="pl-check" data-prestador="${prestadorId}" data-idx="${idx}"></td>
-        <td>${escapeHtml(l.convenio_nome)}</td>
-        <td>${l.tipo}</td>
-        <td>${formatarCompetencia(l.competencia)}</td>
-        <td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td>
-        ${mostrarProtocoloValor ? `<td>${escapeHtml(l.protocolo || '—')}</td><td>${l.valor != null ? 'R$ ' + numeroParaMascaraMoeda(l.valor) : '—'}</td>` : ''}
-        <td>${escapeHtml(l.observacao || '—')}</td>
-        <td class="acoes-linha">
-          <button class="btn pequeno" data-lancar="${idx}">Lançar</button>
-          ${l.status === 'enviado_falta_anexo' ? `<button class="btn secundario pequeno" data-marcar-faturado="${idx}">Marcar Faturado</button>` : ''}
-          ${l.faturamento_id ? `<button class="btn secundario pequeno" data-historico="${l.faturamento_id}">Histórico</button>` : ''}
-        </td>
-      </tr>`;
+  for (const [convenioId, conv] of conveniosOrdenados){
+    const totalConvenio = [...conv.prestadores.values()].reduce((s, p) => s + p.idxs.length, 0);
+    html += `<div class="cartao"><h2>${escapeHtml(conv.nome)} <span class="resumo">· ${totalConvenio} lançamento(s)</span></h2>`;
+    const prestadoresOrdenados = [...conv.prestadores.entries()].sort((a, b) => a[1].nome.localeCompare(b[1].nome));
+    for (const [prestadorId, grupo] of prestadoresOrdenados){
+      const chaveGrupo = `${convenioId}-${prestadorId}`;
+      const tipos = new Set(grupo.idxs.map(i => linhas[i].tipo));
+      html += `<details class="grupo-prestador">
+        <summary>
+          <input type="checkbox" class="pl-check-grupo" data-grupo="${chaveGrupo}" onclick="event.stopPropagation()">
+          <span class="nome-prestador">${escapeHtml(grupo.nome)}</span>
+          <span class="resumo">${grupo.idxs.length} lançamento(s) · ${tipos.size} tipo(s)</span>
+        </summary>
+        <div class="conteudo-grupo">
+          <table><thead><tr><th></th><th>Competência</th><th>Tipo</th><th>Status</th>${mostrarProtocoloValor ? '<th>Protocolo</th><th>Valor</th>' : ''}<th>Observação</th><th></th></tr></thead><tbody>`;
+      for (const idx of grupo.idxs){
+        const l = linhas[idx];
+        html += `<tr>
+          <td><input type="checkbox" class="pl-check" data-grupo="${chaveGrupo}" data-idx="${idx}"></td>
+          <td>${formatarCompetencia(l.competencia)}</td>
+          <td>${l.tipo}</td>
+          <td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td>
+          ${mostrarProtocoloValor ? `<td>${escapeHtml(l.protocolo || '—')}</td><td>${l.valor != null ? 'R$ ' + numeroParaMascaraMoeda(l.valor) : '—'}</td>` : ''}
+          <td>${escapeHtml(l.observacao || '—')}</td>
+          <td class="acoes-linha">
+            <button class="btn pequeno" data-lancar="${idx}">Lançar</button>
+            ${l.status === 'enviado_falta_anexo' ? `<button class="btn secundario pequeno" data-marcar-faturado="${idx}">Marcar Faturado</button>` : ''}
+            ${l.faturamento_id ? `<button class="btn secundario pequeno" data-historico="${l.faturamento_id}">Histórico</button>` : ''}
+          </td>
+        </tr>`;
+      }
+      html += '</tbody></table></div></details>';
     }
-    html += '</tbody></table></div></details>';
+    html += '</div>';
   }
   alvo.innerHTML = html;
 
@@ -335,7 +343,7 @@ function renderPainelLinhas(){
   alvo.querySelectorAll('.pl-check').forEach(chk => chk.addEventListener('change', atualizarContagem));
   alvo.querySelectorAll('[data-historico]').forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); mostrarHistorico(Number(btn.dataset.historico)); }));
   alvo.querySelectorAll('.pl-check-grupo').forEach(chkGrupo => chkGrupo.addEventListener('change', (e) => {
-    alvo.querySelectorAll(`.pl-check[data-prestador="${chkGrupo.dataset.prestador}"]`).forEach(chk => { chk.checked = e.target.checked; });
+    alvo.querySelectorAll(`.pl-check[data-grupo="${chkGrupo.dataset.grupo}"]`).forEach(chk => { chk.checked = e.target.checked; });
     atualizarContagem();
   }));
 
