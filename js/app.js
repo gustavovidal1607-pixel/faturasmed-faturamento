@@ -99,6 +99,7 @@ const ABAS = {
   painel: { label: 'Controle de faturamento', render: renderPainel },
   tarefas: { label: 'Tarefas', render: renderTarefas },
   cadastros: { label: 'Cadastros', render: renderCadastros, admin: true },
+  atividades: { label: 'Atividades da equipe', render: renderAtividades, admin: true },
   usuarios: { label: 'Usuários', render: renderUsuarios, admin: true },
 };
 
@@ -866,6 +867,87 @@ async function renderAtribuicoes(){
     await api(`/atribuicoes?id=${btn.dataset.excluirAtribuicao}`, { method: 'DELETE' });
     renderAtribuicoes();
   }));
+}
+
+// ---------------- Atividades da equipe (admin) ----------------
+
+let atividadesCharts = [];
+
+async function renderAtividades(){
+  const cont = document.getElementById('conteudo');
+  cont.innerHTML = `
+    <h1>Atividades da equipe</h1>
+    <p class="subtitulo">Produção individual: lançamentos feitos por dia, no fuso de Brasília.</p>
+    <div class="cartao">
+      <div class="filtros">
+        <div class="campo"><label>Período</label>
+          <select id="at-periodo">
+            <option value="7">Últimos 7 dias</option>
+            <option value="30" selected>Últimos 30 dias</option>
+            <option value="90">Últimos 90 dias</option>
+          </select>
+        </div>
+        <button class="btn" id="at-buscar">Atualizar</button>
+      </div>
+    </div>
+    <div id="atividades-conteudo"><div class="vazio">Carregando...</div></div>
+  `;
+  document.getElementById('at-buscar').addEventListener('click', carregarAtividades);
+  await carregarAtividades();
+}
+
+async function carregarAtividades(){
+  const dias = document.getElementById('at-periodo').value;
+  const alvo = document.getElementById('atividades-conteudo');
+  alvo.innerHTML = '<div class="vazio">Carregando...</div>';
+  atividadesCharts.forEach(c => c.destroy());
+  atividadesCharts = [];
+  try{
+    const data = await api('/atividades?dias=' + dias);
+    if (!data.usuarios.length){ alvo.innerHTML = '<div class="cartao"><div class="vazio">Nenhuma atividade registrada nesse período.</div></div>'; return; }
+
+    alvo.innerHTML = data.usuarios.map(u => `
+      <div class="cartao">
+        <h2>${escapeHtml(u.usuario_nome)} · ${u.total} ação(ões)</h2>
+        <div class="grade-kpi">
+          ${PAINEL_ABAS.map(aba => `<div class="kpi cor-${aba.id}"><div class="rotulo">${aba.label}</div><div class="numero">${u.total_por_status[aba.id] || 0}</div></div>`).join('')}
+        </div>
+        <div style="height:220px;"><canvas id="grafico-${u.usuario_id}"></canvas></div>
+        <h3 style="margin-top:20px;">Por dia</h3>
+        ${u.por_dia.slice().reverse().map(d => `
+          <details class="grupo-prestador">
+            <summary>
+              <span class="nome-prestador">${formatarData(d.dia)}</span>
+              <span class="resumo">${d.total} ação(ões)</span>
+            </summary>
+            <div class="conteudo-grupo">
+              <table><thead><tr><th>Hora</th><th>Convênio</th><th>Prestador</th><th>Tipo</th><th>Status</th></tr></thead><tbody>
+                ${d.itens.map(it => `<tr><td>${formatarDataHora(it.criado_em)}</td><td>${escapeHtml(it.convenio_nome)}</td><td>${escapeHtml(it.prestador_nome)}</td><td>${it.tipo}</td><td><span class="selo ${it.status}">${rotuloStatus(it.status)}</span></td></tr>`).join('')}
+              </tbody></table>
+            </div>
+          </details>
+        `).join('')}
+      </div>
+    `).join('');
+
+    for (const u of data.usuarios){
+      const ctx = document.getElementById(`grafico-${u.usuario_id}`);
+      const chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: u.por_dia.map(d => formatarData(d.dia)),
+          datasets: [{ label: 'Lançamentos', data: u.por_dia.map(d => d.total), backgroundColor: '#1D4FC4', borderRadius: 4 }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+        },
+      });
+      atividadesCharts.push(chart);
+    }
+  }catch(err){ alvo.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
 }
 
 // ---------------- Usuários (admin) ----------------
