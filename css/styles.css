@@ -211,12 +211,7 @@ main{
 .kpi.cor-finalizada .numero{ color: var(--success); }
 
 /* ---- Linhas expansíveis por prestador ---- */
-.tipo-clicavel{
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.tipo-clicavel:hover{ border-color: var(--blue); }
-.tipo-clicavel h2{ display: flex; align-items: center; gap: 8px; }
+.tipo-clicavel summary{ flex-wrap: wrap; }
 
 .grupo-prestador{
   border: 1px solid var(--border);
@@ -410,26 +405,3 @@ button{
   max-width: 240px;
   white-space: pre-wrap;
 }
-
-/* ---- Modal ---- */
-.modal-fundo{
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 20px;
-}
-.modal-caixa{
-  background: var(--card);
-  border-radius: 14px;
-  padding: 26px;
-  width: 100%;
-  max-width: 640px;
-  max-height: 85vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 50px rgba(16, 24, 40, 0.22);
-}
-.modal-caixa .cartao{ margin-bottom: 0; border: none; padding: 0; box-shadow: none; }
