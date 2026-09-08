@@ -25,10 +25,23 @@ async function listarLinhas({ competencia, escopo, convenioId, prestadorId, stat
   const lancamentos = await db`SELECT * FROM faturamentos WHERE competencia = ${competencia}`;
   const porChave = new Map(lancamentos.map(l => [`${l.convenio_id}:${l.prestador_id}:${l.tipo}`, l]));
 
+  const idsLancamentos = lancamentos.map(l => l.id);
+  const resumoProtocolos = new Map(); // faturamento_id -> { quantidade, total }
+  if (idsLancamentos.length){
+    const agregados = await db`
+      SELECT faturamento_id, COUNT(*) AS quantidade, SUM(valor) AS total
+      FROM faturamentos_protocolos
+      WHERE faturamento_id = ANY(${idsLancamentos})
+      GROUP BY faturamento_id
+    `;
+    for (const a of agregados) resumoProtocolos.set(a.faturamento_id, { quantidade: Number(a.quantidade), total: a.total });
+  }
+
   let linhas = [];
   for (const v of vinculos){
     for (const tipo of v.tipos){
       const l = porChave.get(`${v.convenio_id}:${v.prestador_id}:${tipo}`);
+      const resumo = l ? resumoProtocolos.get(l.id) : null;
       linhas.push({
         convenio_id: v.convenio_id,
         convenio_nome: v.convenio_nome,
@@ -40,8 +53,8 @@ async function listarLinhas({ competencia, escopo, convenioId, prestadorId, stat
         mes_completo: l ? !!l.mes_completo : false,
         faturado_de: l ? l.faturado_de : null,
         faturado_ate: l ? l.faturado_ate : null,
-        protocolo: l ? l.protocolo : null,
-        valor: l ? l.valor : null,
+        protocolos_quantidade: resumo ? resumo.quantidade : 0,
+        protocolos_total: resumo ? resumo.total : null,
         observacao: l ? l.observacao : null,
         faturamento_id: l ? l.id : null,
       });

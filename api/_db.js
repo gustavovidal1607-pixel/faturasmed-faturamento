@@ -21,7 +21,7 @@ async function ensureSchema(){
     // existe, o resto com certeza também já rodou antes -- pula tudo e
     // economiza esses round-trips no caminho comum. Só funciona se toda
     // migração nova for sempre adicionada no FINAL desta sequência.
-    const jaMigrado = await db`SELECT 1 FROM information_schema.columns WHERE table_name = 'faturamentos_historico' AND column_name = 'faturado_de'`;
+    const jaMigrado = await db`SELECT 1 FROM information_schema.tables WHERE table_name = 'faturamentos_protocolos'`;
     if (jaMigrado.length) return;
 
     await db`CREATE TABLE IF NOT EXISTS usuarios (
@@ -172,6 +172,20 @@ async function ensureSchema(){
       criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )`;
     await db`CREATE INDEX IF NOT EXISTS idx_tarefas_responsavel_status ON tarefas(responsavel_usuario_id, status)`;
+
+    // Faturamento em partes: durante o mês o faturista manda vários
+    // protocolos aos poucos (não tudo de uma vez), cada um com seu próprio
+    // valor e data -- em vez de um único protocolo/valor por lançamento.
+    await db`CREATE TABLE IF NOT EXISTS faturamentos_protocolos (
+      id SERIAL PRIMARY KEY,
+      faturamento_id INTEGER NOT NULL REFERENCES faturamentos(id) ON DELETE CASCADE,
+      protocolo TEXT NOT NULL,
+      valor NUMERIC(12,2),
+      data DATE,
+      criado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`;
+    await db`CREATE INDEX IF NOT EXISTS idx_faturamentos_protocolos_faturamento ON faturamentos_protocolos(faturamento_id)`;
   })();
   schemaReady.catch(() => { schemaReady = null; });
   return schemaReady;
