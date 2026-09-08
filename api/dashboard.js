@@ -26,13 +26,14 @@ module.exports = async (req, res) => {
       .filter(c => c.dias_restantes >= 0 && c.dias_restantes <= DIAS_ALERTA_PRAZO)
       .sort((a, b) => a.dias_restantes - b.dias_restantes);
 
-    const linhas = (await listarLinhas({ competencia, escopo: null })).filter(l => l.status !== 'faturado');
+    const linhas = await listarLinhas({ competencia, escopo: null });
+    const totalPendentes = linhas.filter(l => l.status !== 'faturado').length;
 
     res.status(200).json({
       competencia,
       prazos_proximos: prazosProximos,
-      pendentes: linhas,
-      total_pendentes: linhas.length,
+      faturamentos: linhas,
+      total_pendentes: totalPendentes,
     });
   }catch(err){
     console.error('dashboard error', err);

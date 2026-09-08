@@ -116,42 +116,81 @@ function iniciarApp(usuario){
 
 // ---------------- Painel (admin) ----------------
 
+const PAINEL_ABAS = [
+  { id: 'pendente', label: 'Pendentes' },
+  { id: 'enviado_falta_anexo', label: 'Pendente anexo' },
+  { id: 'faturado', label: 'Faturados' },
+];
+const ORDEM_TIPO = ['SADT', 'CONSULTA', 'GIH'];
+
+let painelDados = null;
+let painelSubaba = 'pendente';
+
 async function renderPainel(){
   const cont = document.getElementById('conteudo');
   cont.innerHTML = '<div class="vazio">Carregando...</div>';
   try{
-    const data = await api('/dashboard');
-    let html = `<h1>Painel</h1><p class="subtitulo">Competência ${data.competencia}</p>`;
-    if (data.prazos_proximos.length){
-      html += '<div class="cartao"><h2>Prazos de fechamento chegando</h2>';
-      for (const c of data.prazos_proximos){
-        html += `<div class="alerta prazo">${escapeHtml(c.nome)} fecha dia ${c.prazo_dia} — ${c.dias_restantes === 0 ? 'hoje' : c.dias_restantes + ' dia(s)'}</div>`;
-      }
-      html += '</div>';
-    }
-    html += `<h2 style="margin:0 0 12px;">Pendentes de faturamento (${data.total_pendentes})</h2>`;
-    if (!data.pendentes.length){
-      html += '<div class="cartao"><div class="vazio">Nada pendente nessa competência.</div></div>';
-    }else{
-      const porTipo = new Map();
-      for (const l of data.pendentes){
-        if (!porTipo.has(l.tipo)) porTipo.set(l.tipo, []);
-        porTipo.get(l.tipo).push(l);
-      }
-      const ORDEM_TIPO = ['SADT', 'CONSULTA', 'GIH'];
-      const tipos = [...porTipo.keys()].sort((a, b) => ORDEM_TIPO.indexOf(a) - ORDEM_TIPO.indexOf(b));
-      for (const tipo of tipos){
-        const linhas = porTipo.get(tipo);
-        html += `<div class="cartao"><h2>${tipo} (${linhas.length})</h2>`;
-        html += '<table><thead><tr><th>Convênio</th><th>Prestador</th><th>Status</th></tr></thead><tbody>';
-        for (const l of linhas){
-          html += `<tr><td>${escapeHtml(l.convenio_nome)}</td><td>${escapeHtml(l.prestador_nome)}</td><td><span class="selo ${l.status}">${rotuloStatus(l.status)}</span></td></tr>`;
-        }
-        html += '</tbody></table></div>';
-      }
-    }
-    cont.innerHTML = html;
+    painelDados = await api('/dashboard');
+    painelSubaba = 'pendente';
+    montarPainel();
   }catch(err){ cont.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
+}
+
+function montarPainel(){
+  const cont = document.getElementById('conteudo');
+  const data = painelDados;
+  let html = `<h1>Painel</h1><p class="subtitulo">Competência ${data.competencia}</p>`;
+  if (data.prazos_proximos.length){
+    html += '<div class="cartao"><h2>Prazos de fechamento chegando</h2>';
+    for (const c of data.prazos_proximos){
+      html += `<div class="alerta prazo">${escapeHtml(c.nome)} fecha dia ${c.prazo_dia} — ${c.dias_restantes === 0 ? 'hoje' : c.dias_restantes + ' dia(s)'}</div>`;
+    }
+    html += '</div>';
+  }
+
+  const contagens = { pendente: 0, enviado_falta_anexo: 0, faturado: 0 };
+  for (const l of data.faturamentos) contagens[l.status] = (contagens[l.status] || 0) + 1;
+
+  html += '<div class="subabas" id="painel-subabas">';
+  for (const aba of PAINEL_ABAS){
+    html += `<button data-sub="${aba.id}" class="${painelSubaba === aba.id ? 'ativa' : ''}">${aba.label} (${contagens[aba.id] || 0})</button>`;
+  }
+  html += '</div><div id="painel-subconteudo"></div>';
+  cont.innerHTML = html;
+
+  document.querySelectorAll('#painel-subabas button').forEach(btn => {
+    btn.addEventListener('click', () => { painelSubaba = btn.dataset.sub; montarPainel(); });
+  });
+
+  renderPainelLinhas();
+}
+
+function renderPainelLinhas(){
+  const alvo = document.getElementById('painel-subconteudo');
+  const linhas = painelDados.faturamentos.filter(l => l.status === painelSubaba);
+  if (!linhas.length){ alvo.innerHTML = '<div class="cartao"><div class="vazio">Nada aqui nessa competência.</div></div>'; return; }
+
+  const porTipo = new Map();
+  for (const l of linhas){
+    if (!porTipo.has(l.tipo)) porTipo.set(l.tipo, []);
+    porTipo.get(l.tipo).push(l);
+  }
+  const tipos = [...porTipo.keys()].sort((a, b) => ORDEM_TIPO.indexOf(a) - ORDEM_TIPO.indexOf(b));
+  const mostrarPeriodo = painelSubaba !== 'pendente';
+
+  let html = '<div class="grade-tipos">';
+  for (const tipo of tipos){
+    const grupo = porTipo.get(tipo);
+    html += `<div class="cartao"><h2>${tipo} (${grupo.length})</h2>`;
+    html += `<table><thead><tr><th>Convênio</th><th>Prestador</th>${mostrarPeriodo ? '<th>Período</th>' : ''}</tr></thead><tbody>`;
+    for (const l of grupo){
+      const periodo = mostrarPeriodo ? `<td>${formatarPeriodo(l.mes_completo, l.faturado_de, l.faturado_ate)}</td>` : '';
+      html += `<tr><td>${escapeHtml(l.convenio_nome)}</td><td>${escapeHtml(l.prestador_nome)}</td>${periodo}</tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  html += '</div>';
+  alvo.innerHTML = html;
 }
 
 // ---------------- Faturamentos ----------------
