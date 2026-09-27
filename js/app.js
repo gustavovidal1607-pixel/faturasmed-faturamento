@@ -144,6 +144,7 @@ document.getElementById('btn-sair').addEventListener('click', async () => {
 
 const ABAS = {
   painel: { label: 'Controle de faturamento', render: renderPainel },
+  gih: { label: 'GIH', render: renderGih },
   tarefas: { label: 'Tarefas', render: renderTarefas },
   cadastros: { label: 'Cadastros', render: renderCadastros, admin: true },
   atividades: { label: 'Atividades da equipe', render: renderAtividades, admin: true },
@@ -643,6 +644,201 @@ async function carregarTarefas(){
       carregarTarefas();
     }));
   }catch(err){ alvo.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`; }
+}
+
+// ---------------- GIH ----------------
+
+function lerArquivoComoBase64(file) {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onload = () => resolve(String(leitor.result).split(',')[1] || '');
+    leitor.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
+    leitor.readAsDataURL(file);
+  });
+}
+
+function baixarBase64(nomeArquivo, base64) {
+  const link = document.createElement('a');
+  link.href = 'data:application/octet-stream;base64,' + base64;
+  link.download = nomeArquivo;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+async function baixarLoteGih(id, botao) {
+  const original = botao.textContent;
+  botao.disabled = true;
+  botao.textContent = 'Baixando...';
+  try {
+    const data = await api(`/gih?baixar=${id}`);
+    baixarBase64(data.nome_arquivo, data.conteudo_base64);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    botao.disabled = false;
+    botao.textContent = original;
+  }
+}
+
+function cartaoLoteGih({ titulo, texto, lote, podeUpload, inputId, accept }) {
+  return `
+    <div class="cartao">
+      <h3 style="margin-top:0;">${titulo}</h3>
+      <p class="subtitulo" style="margin-top:-4px;">${texto}</p>
+      ${lote ? `
+        <div class="linha-form" style="align-items:center;">
+          <div>
+            <div><b>${escapeHtml(lote.nome_arquivo)}</b></div>
+            <div class="particularidade-txt">Enviado por ${escapeHtml(lote.enviado_por_nome || '—')} em ${formatarDataHora(lote.criado_em)}</div>
+          </div>
+          <button class="btn secundario pequeno" data-baixar-lote="${lote.id}">Baixar</button>
+        </div>
+      ` : `<div class="vazio">Nenhum arquivo enviado ainda.</div>`}
+      ${podeUpload ? `
+        <div class="linha-form" style="margin-top:10px;">
+          <div class="campo">
+            <label>${lote ? 'Enviar nova planilha' : 'Enviar planilha'}</label>
+            <input type="file" id="${inputId}" accept="${accept}">
+          </div>
+        </div>
+        <div class="erro-login" id="${inputId}-erro"></div>
+      ` : ''}
+    </div>
+  `;
+}
+
+async function renderGih() {
+  const usuario = usuarioAtual();
+  const cont = document.getElementById('conteudo');
+  cont.innerHTML = `
+    <h1>GIH</h1>
+    <p class="subtitulo">Planilhas de guias de internação hospitalar: o faturista envia a planilha do hospital, o administrador processa e devolve a planilha com o retorno -- daí é só marcar o que já foi faturado.</p>
+    <div id="gih-conteudo"><div class="vazio">Carregando...</div></div>
+  `;
+  await carregarGih();
+}
+
+let gihFiltro = 'pendentes';
+
+async function carregarGih() {
+  const usuario = usuarioAtual();
+  const alvo = document.getElementById('gih-conteudo');
+  let data;
+  try {
+    data = await api('/gih');
+  } catch (err) {
+    alvo.innerHTML = `<div class="alerta pendente">${escapeHtml(err.message)}</div>`;
+    return;
+  }
+
+  const guias = data.guias.filter(g => gihFiltro === 'todas' ? true : gihFiltro === 'pendentes' ? !g.faturado : g.faturado);
+
+  alvo.innerHTML = `
+    <div class="grade-kpi" style="margin-bottom:18px;">
+      <div class="kpi"><div class="rotulo">Total de guias</div><div class="numero">${data.resumo.total}</div></div>
+      <div class="kpi cor-pendente"><div class="rotulo">Pendentes</div><div class="numero">${data.resumo.pendentes}</div></div>
+      <div class="kpi cor-faturado"><div class="rotulo">Faturadas</div><div class="numero">${data.resumo.faturadas}</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+      ${cartaoLoteGih({
+        titulo: 'Planilha do faturista',
+        texto: 'O faturista sobe aqui a planilha recebida do hospital, pra o administrador baixar e processar.',
+        lote: data.lote_faturista,
+        podeUpload: true,
+        inputId: 'gih-upload-faturista',
+        accept: '.xlsx,.xls,.csv',
+      })}
+      ${cartaoLoteGih({
+        titulo: 'Planilha do administrador',
+        texto: 'Depois de processar, o administrador sobe aqui a planilha de retorno (.xlsx) -- ela vira o checklist abaixo automaticamente.',
+        lote: data.lote_admin,
+        podeUpload: ehAdmin(usuario),
+        inputId: 'gih-upload-admin',
+        accept: '.xlsx',
+      })}
+    </div>
+
+    <div class="subabas" id="gih-subabas">
+      <button data-filtro="pendentes">Pendentes</button>
+      <button data-filtro="faturadas">Faturadas</button>
+      <button data-filtro="todas">Todas</button>
+    </div>
+
+    ${!guias.length ? '<div class="vazio">Nenhuma guia nessa visualização.</div>' : `
+      <table>
+        <thead><tr><th>Convênio</th><th>Data</th><th>Observação</th><th>Faturado</th><th></th></tr></thead>
+        <tbody>
+          ${guias.map(g => `
+            <tr>
+              <td>${escapeHtml(g.convenio || '—')}</td>
+              <td>${g.data ? formatarData(g.data) : '—'}</td>
+              <td><input type="text" class="gih-obs" data-obs="${g.id}" value="${escapeHtml(g.observacao || '')}" placeholder="Observação..." style="width:100%;"></td>
+              <td><input type="checkbox" data-faturado="${g.id}" ${g.faturado ? 'checked' : ''}></td>
+              <td><button class="btn secundario pequeno" data-detalhe="${g.id}">Detalhes</button></td>
+            </tr>
+            <tr class="gih-detalhe" id="gih-detalhe-${g.id}" hidden><td colspan="5">
+              <div class="particularidade-txt">${Object.entries(typeof g.dados === 'string' ? JSON.parse(g.dados) : g.dados).map(([k, v]) => `<div><b>${escapeHtml(k)}:</b> ${escapeHtml(v)}</div>`).join('')}</div>
+            </td></tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `}
+  `;
+
+  document.querySelectorAll('#gih-subabas button').forEach(btn => {
+    btn.classList.toggle('ativa', btn.dataset.filtro === gihFiltro);
+    btn.addEventListener('click', () => { gihFiltro = btn.dataset.filtro; carregarGih(); });
+  });
+
+  alvo.querySelectorAll('[data-baixar-lote]').forEach(btn => {
+    btn.addEventListener('click', () => baixarLoteGih(btn.dataset.baixarLote, btn));
+  });
+
+  const uploadFaturista = document.getElementById('gih-upload-faturista');
+  if (uploadFaturista) uploadFaturista.addEventListener('change', () => enviarPlanilhaGih(uploadFaturista, 'faturista'));
+  const uploadAdmin = document.getElementById('gih-upload-admin');
+  if (uploadAdmin) uploadAdmin.addEventListener('change', () => enviarPlanilhaGih(uploadAdmin, 'admin'));
+
+  alvo.querySelectorAll('[data-detalhe]').forEach(btn => btn.addEventListener('click', () => {
+    const linha = document.getElementById('gih-detalhe-' + btn.dataset.detalhe);
+    linha.hidden = !linha.hidden;
+  }));
+
+  alvo.querySelectorAll('[data-faturado]').forEach(chk => chk.addEventListener('change', async () => {
+    try {
+      await api(`/gih?id=${chk.dataset.faturado}`, { method: 'PATCH', body: JSON.stringify({ faturado: chk.checked }) });
+      carregarGih();
+    } catch (err) { alert(err.message); chk.checked = !chk.checked; }
+  }));
+
+  alvo.querySelectorAll('.gih-obs').forEach(input => {
+    let ultimoValor = input.value;
+    input.addEventListener('change', async () => {
+      if (input.value === ultimoValor) return;
+      try {
+        await api(`/gih?id=${input.dataset.obs}`, { method: 'PATCH', body: JSON.stringify({ observacao: input.value }) });
+        ultimoValor = input.value;
+      } catch (err) { alert(err.message); input.value = ultimoValor; }
+    });
+  });
+}
+
+async function enviarPlanilhaGih(inputArquivo, tipo) {
+  const erroEl = document.getElementById(inputArquivo.id + '-erro');
+  if (erroEl) erroEl.textContent = '';
+  const file = inputArquivo.files[0];
+  if (!file) return;
+  try {
+    const conteudo_base64 = await lerArquivoComoBase64(file);
+    await api('/gih', { method: 'POST', body: JSON.stringify({ tipo, nome_arquivo: file.name, conteudo_base64 }) });
+    carregarGih();
+  } catch (err) {
+    if (erroEl) erroEl.textContent = err.message;
+    else alert(err.message);
+    inputArquivo.value = '';
+  }
 }
 
 // ---------------- Cadastros (admin) ----------------

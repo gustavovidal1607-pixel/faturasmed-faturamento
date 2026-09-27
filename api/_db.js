@@ -232,9 +232,55 @@ async function ensureSchema(){
     // A particularidade agora mora em vinculos_tipos (uma por tipo); a
     // coluna antiga no vínculo já foi copiada pra lá na migração acima.
     await db`ALTER TABLE vinculos DROP COLUMN IF EXISTS particularidades`;
-  })();
+  })().then(() => migrarGih(db));
   schemaReady.catch(() => { schemaReady = null; });
   return schemaReady;
+}
+
+// Migração da aba GIH, em bloco separado (com seu próprio guard) em vez
+// de ir dentro do bloco acima -- ali algumas instruções (como o INSERT
+// que lê vinculos.particularidades antes de a coluna ser removida) só
+// são seguras de rodar uma vez, na ordem, num banco ainda não migrado;
+// reaproveitar aquele guard pra decidir se ESSA migração roda de novo
+// faria o bloco inteiro tentar rodar outra vez num banco que já passou
+// daquele ponto, e quebrar. Bloco novo, guard novo, independente.
+async function migrarGih(db){
+  const jaMigrado = await db`SELECT 1 FROM information_schema.tables WHERE table_name = 'gih_guias'`;
+  if (jaMigrado.length) return;
+
+  // Aba GIH: fluxo de planilha, separado do controle de faturamento por
+  // prestador/convênio/competência acima. Um "lote" é cada arquivo
+  // enviado -- do faturista (guarda só pra o admin baixar de volta) ou
+  // do admin (guarda o arquivo E o sistema lê linha a linha em
+  // gih_guias, pra virar checklist do faturista).
+  await db`CREATE TABLE IF NOT EXISTS gih_lotes (
+    id SERIAL PRIMARY KEY,
+    tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('faturista','admin')),
+    nome_arquivo TEXT NOT NULL,
+    conteudo_base64 TEXT NOT NULL,
+    enviado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await db`CREATE INDEX IF NOT EXISTS idx_gih_lotes_tipo ON gih_lotes(tipo, criado_em DESC)`;
+
+  // Uma linha por guia/paciente, extraída da planilha do admin. Guarda a
+  // linha inteira em "dados" (JSON) porque as colunas exatas ainda vão
+  // ser definidas -- "convenio" e "data" saem daí pra virar coluna
+  // própria (filtro/exibição), o resto fica disponível sem perder nada.
+  await db`CREATE TABLE IF NOT EXISTS gih_guias (
+    id SERIAL PRIMARY KEY,
+    lote_id INTEGER NOT NULL REFERENCES gih_lotes(id) ON DELETE CASCADE,
+    convenio TEXT,
+    data DATE,
+    dados JSONB NOT NULL,
+    faturado BOOLEAN NOT NULL DEFAULT false,
+    faturado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    faturado_em TIMESTAMPTZ,
+    observacao TEXT,
+    criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await db`CREATE INDEX IF NOT EXISTS idx_gih_guias_lote ON gih_guias(lote_id)`;
+  await db`CREATE INDEX IF NOT EXISTS idx_gih_guias_faturado ON gih_guias(faturado)`;
 }
 
 // Minúsculo, sem espaço nas pontas, espaços internos viram ponto (ex:
