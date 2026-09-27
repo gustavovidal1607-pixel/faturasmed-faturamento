@@ -754,7 +754,7 @@ async function carregarGih() {
         titulo: 'Planilha do administrador',
         texto: 'Depois de processar, o administrador sobe aqui a planilha de retorno (.xlsx) -- ela vira o checklist abaixo automaticamente.',
         lote: data.lote_admin,
-        podeUpload: ehAdmin(usuario),
+        podeUpload: usuario.cargo === 'administrador',
         inputId: 'gih-upload-admin',
         accept: '.xlsx',
       })}
