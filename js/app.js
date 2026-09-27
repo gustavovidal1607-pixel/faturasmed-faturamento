@@ -84,22 +84,53 @@ function usuarioAtual(){
 
 // ---------------- Login ----------------
 
-document.getElementById('btn-login').addEventListener('click', fazerLogin);
-document.getElementById('login-senha').addEventListener('keydown', e => { if (e.key === 'Enter') fazerLogin(); });
-document.getElementById('login-usuario').addEventListener('keydown', e => { if (e.key === 'Enter') fazerLogin(); });
+const CHAVE_LOGIN_LEMBRADO = 'ff_login_lembrado';
 
-async function fazerLogin(){
+document.getElementById('login-ano').textContent = new Date().getFullYear();
+{
+  const loginLembrado = localStorage.getItem(CHAVE_LOGIN_LEMBRADO);
+  if (loginLembrado){
+    document.getElementById('login-usuario').value = loginLembrado;
+    document.getElementById('chk-lembrar').checked = true;
+  }
+}
+
+document.getElementById('form-login').addEventListener('submit', fazerLogin);
+
+document.getElementById('btn-alternar-senha').addEventListener('click', (ev) => {
+  const btn = ev.currentTarget;
+  const campo = document.getElementById('login-senha');
+  const mostrando = campo.type === 'text';
+  campo.type = mostrando ? 'password' : 'text';
+  btn.querySelector('.icone-olho-aberto').hidden = !mostrando;
+  btn.querySelector('.icone-olho-fechado').hidden = mostrando;
+  btn.setAttribute('aria-label', mostrando ? 'Mostrar senha' : 'Esconder senha');
+});
+
+// Não existe redefinição de senha por e-mail nesse sistema (equipe
+// pequena) -- em vez de um link morto, explica quem resolve isso.
+document.getElementById('btn-esqueci-senha').addEventListener('click', () => {
+  const msg = document.getElementById('msg-esqueci-senha');
+  msg.hidden = !msg.hidden;
+});
+
+async function fazerLogin(ev){
+  ev.preventDefault();
   const login = document.getElementById('login-usuario').value.trim();
   const senha = document.getElementById('login-senha').value;
+  const lembrar = document.getElementById('chk-lembrar').checked;
   const erroEl = document.getElementById('erro-login');
   erroEl.textContent = '';
-  if (!login || !senha){ erroEl.textContent = 'Informe usuário e senha.'; return; }
+  erroEl.hidden = true;
+  if (!login || !senha){ erroEl.textContent = 'Informe usuário e senha.'; erroEl.hidden = false; return; }
   try{
     const data = await api('/auth', { method: 'POST', body: JSON.stringify({ login, senha }) });
+    if (lembrar) localStorage.setItem(CHAVE_LOGIN_LEMBRADO, login);
+    else localStorage.removeItem(CHAVE_LOGIN_LEMBRADO);
     localStorage.setItem('token', data.token);
     localStorage.setItem('usuario', JSON.stringify(data.usuario));
     iniciarApp(data.usuario);
-  }catch(err){ erroEl.textContent = err.message; }
+  }catch(err){ erroEl.textContent = err.message; erroEl.hidden = false; }
 }
 
 document.getElementById('btn-sair').addEventListener('click', async () => {

@@ -37,58 +37,104 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   box-shadow: 0 0 0 3px var(--blue-ring);
 }
 
-/* ---- Login ---- */
-#tela-login{
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg);
-}
-.login-caixa{
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 44px 40px;
-  width: 340px;
-  box-shadow: var(--sombra-media);
-  text-align: center;
-}
 .logo-img{
   height: 30px;
   display: block;
 }
-.logo-img-login{
-  height: 52px;
-  margin: 0 auto 6px;
+
+/* ---- Login (padrão da família Faturas Med: formulário à esquerda,
+   marca e destaques do sistema à direita -- mesmo layout/classes do
+   Gestão, só o texto e os tokens de cor mudam pra cada sistema). ---- */
+.login-split{ min-height:100vh; display:grid; grid-template-columns:minmax(360px,480px) 1fr; }
+
+.login-split-left{ display:flex; flex-direction:column; justify-content:center; padding:48px clamp(24px,6vw,88px); background:#fff; }
+.login-left-inner{ width:100%; max-width:400px; margin:0 auto; }
+
+.login-brand{ display:flex; align-items:center; gap:10px; margin-bottom:40px; }
+.login-brand svg{ flex:0 0 auto; }
+.login-brand .brand-nome{ font-size:21px; font-weight:800; color:var(--text); line-height:1.15; }
+.login-brand .brand-nome b{ color:var(--blue); }
+.login-brand .brand-sub{ font-size:11px; color:var(--muted); margin-top:1px; }
+
+.login-left-inner h1{ font-size:23px; font-weight:800; color:var(--text); margin:0 0 8px; }
+.login-left-inner .login-lead{ font-size:13px; color:var(--muted); line-height:1.5; margin:0 0 24px; }
+
+.login-erro{ background:var(--danger-bg); color:var(--danger); font-size:12.5px; font-weight:600; padding:9px 12px; border-radius:10px; margin-bottom:14px; }
+
+.login-campo{ position:relative; margin-bottom:14px; }
+.login-campo .campo-icone{ position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--muted); pointer-events:none; display:flex; }
+.login-campo input{
+  width:100%; padding:13px 14px 13px 42px; border:1.5px solid var(--border); border-radius:10px;
+  font-size:14px; outline:none; transition:border-color .15s, box-shadow .15s; background:var(--bg);
 }
-.login-caixa .tagline{
-  color: var(--muted);
-  font-size: 12.5px;
-  margin-bottom: 28px;
-  letter-spacing: 0.01em;
+.login-campo input:focus{ border-color:var(--blue); background:#fff; box-shadow:0 0 0 3px var(--blue-ring); }
+.login-campo .campo-alternar{ position:absolute; right:10px; top:50%; transform:translateY(-50%); border:none; background:none; color:var(--muted); cursor:pointer; padding:6px; display:flex; border-radius:6px; }
+.login-campo .campo-alternar:hover{ color:var(--blue); background:var(--blue-soft); }
+
+.login-linha-opcoes{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:2px 0 22px; font-size:12.5px; }
+.login-lembrar{ display:flex; align-items:center; gap:7px; color:var(--muted); cursor:pointer; user-select:none; }
+.login-lembrar input{ width:14px; height:14px; accent-color:var(--blue); cursor:pointer; }
+.login-esqueci{ color:var(--blue); font-weight:700; background:none; border:none; cursor:pointer; font-size:12.5px; padding:0; }
+.login-esqueci:hover{ text-decoration:underline; }
+.login-msg-esqueci{ font-size:12px; color:var(--muted); background:var(--bg); border-radius:8px; padding:9px 11px; margin:-10px 0 16px; line-height:1.5; }
+
+.login-btn-entrar{
+  width:100%; border:none; border-radius:10px; padding:13px; background:var(--blue); color:#fff;
+  font-size:14.5px; font-weight:700; cursor:pointer; transition:background .15s;
+  display:flex; align-items:center; justify-content:center; gap:8px;
 }
-.login-caixa input{
-  width: 100%;
-  padding: 11px 14px;
-  margin-bottom: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
-  transition: border-color 0.15s;
+.login-btn-entrar:hover{ background:#12388F; }
+.login-btn-entrar:disabled{ opacity:.65; cursor:default; }
+
+.login-divisor{ display:flex; align-items:center; gap:12px; margin:24px 0; color:var(--muted); font-size:11.5px; }
+.login-divisor::before, .login-divisor::after{ content:''; flex:1; height:1px; background:var(--border); }
+
+.login-seguro{ display:flex; gap:12px; align-items:flex-start; background:var(--blue-soft); border-radius:12px; padding:14px 16px; }
+.login-seguro .seguro-icone{ width:34px; height:34px; border-radius:9px; background:var(--blue); color:#fff; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+.login-seguro b{ display:block; font-size:13px; color:var(--text); margin-bottom:2px; }
+.login-seguro span{ font-size:12px; color:var(--muted); line-height:1.4; }
+
+.login-footer{ font-size:11px; color:var(--muted); margin-top:32px; }
+
+/* Painel direito: foto (mesma licenca livre usada no Gestao) tingida de
+   azul-marinho via "multiply", sem depender de link externo. */
+.login-split-right{
+  position:relative; overflow:hidden; color:#fff;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(255,255,255,.12), transparent 42%),
+    linear-gradient(155deg, rgba(11,43,99,.92) 0%, rgba(18,59,130,.86) 48%, rgba(10,36,80,.95) 100%),
+    url('../img/login-bg.jpg');
+  background-size:auto, auto, cover;
+  background-position:center, center, center;
+  background-repeat:no-repeat, no-repeat, no-repeat;
+  background-blend-mode:normal, multiply, normal;
+  padding:48px clamp(24px,5vw,64px);
+  display:flex; flex-direction:column; justify-content:space-between;
 }
-.login-caixa input:focus-visible{ border-color: var(--blue); }
-.login-caixa button{
-  width: 100%;
-  padding: 11px;
-  margin-top: 4px;
-}
-.erro-login{
-  color: var(--danger);
-  font-size: 13px;
-  margin-bottom: 12px;
-  min-height: 16px;
-}
+.login-tagline-top{ font-size:12.5px; color:rgba(255,255,255,.75); text-align:right; letter-spacing:.2px; }
+.login-hero h2{ font-size:clamp(24px,2.6vw,32px); font-weight:800; line-height:1.28; margin:0 0 14px; max-width:460px; }
+.login-hero h2 .destaque{ color:#7FC4FF; }
+.login-hero p{ font-size:13.5px; color:rgba(255,255,255,.78); line-height:1.6; max-width:420px; margin:0; }
+
+.login-features{ display:flex; gap:22px; flex-wrap:wrap; margin-top:38px; }
+.login-feature{ display:flex; gap:10px; align-items:flex-start; max-width:175px; }
+.login-feature .feature-icone{ width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+.login-feature .feature-icone.azul{ background:#2E6FE0; }
+.login-feature .feature-icone.verde{ background:var(--teal); }
+.login-feature .feature-icone.roxo{ background:#7B5CF0; }
+.login-feature b{ display:block; font-size:12.5px; margin-bottom:2px; }
+.login-feature span{ font-size:11.5px; color:rgba(255,255,255,.7); line-height:1.35; }
+
+.login-tagline-script{ font-family:'Caveat',cursive; font-size:26px; font-weight:700; color:#fff; transform:rotate(-3deg); margin-top:34px; line-height:1.2; opacity:.92; }
+
+.login-bars-decor{ position:absolute; right:-6px; bottom:-6px; display:flex; align-items:flex-end; gap:8px; opacity:.3; pointer-events:none; }
+.login-bars-decor span{ width:16px; border-radius:4px 4px 0 0; background:linear-gradient(180deg,#7FC4FF,#2E6FE0); }
+
+/* Precisa vir DEPOIS da regra .login-split-right acima -- media query não
+   soma especificidade, só aplica condicionalmente, então se viesse antes
+   a regra incondicional (display:flex) venceria o empate na cascata e a
+   coluna direita nunca sumiria no celular. */
+@media (max-width:860px){ .login-split{ grid-template-columns:1fr; } .login-split-right{ display:none; } }
 
 /* ---- Shell ---- */
 header.topo{

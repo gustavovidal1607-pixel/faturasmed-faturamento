@@ -4,18 +4,84 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Faturas Med - Faturamento</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
 
-<div id="tela-login">
-  <div class="login-caixa">
-    <img class="logo-img logo-img-login" src="img/logo.png" alt="Faturas Med">
-    <div class="tagline">Controle de Faturamento</div>
-    <div class="erro-login" id="erro-login"></div>
-    <input type="text" id="login-usuario" placeholder="Usuário" autocomplete="username">
-    <input type="password" id="login-senha" placeholder="Senha" autocomplete="current-password">
-    <button class="btn" id="btn-login">Entrar</button>
+<div id="tela-login" class="login-split">
+  <div class="login-split-left">
+    <div class="login-left-inner">
+      <div class="login-brand">
+        <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+          <path d="M4 27V19M11 27V14M18 27V10M25 27V6" stroke="#1D4FC4" stroke-width="3.2" stroke-linecap="round"/>
+          <path d="M4 15L12 8L18 12L28 3" stroke="#1FE0AD" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M21 3H28V10" stroke="#1FE0AD" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div>
+          <div class="brand-nome"><b>Faturas</b> Med</div>
+          <div class="brand-sub">Controle de Faturamento</div>
+        </div>
+      </div>
+      <h1>Bem-vindo(a)!</h1>
+      <p class="login-lead">Faça seu login para acessar o sistema e continuar com suas atividades.</p>
+      <form id="form-login">
+        <div class="login-erro" id="erro-login" hidden></div>
+        <div class="login-campo">
+          <span class="campo-icone"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+          <input type="text" id="login-usuario" placeholder="Usuário ou e-mail" autocomplete="username">
+        </div>
+        <div class="login-campo">
+          <span class="campo-icone"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+          <input type="password" id="login-senha" placeholder="Senha" autocomplete="current-password">
+          <button type="button" class="campo-alternar" id="btn-alternar-senha" tabindex="-1" aria-label="Mostrar senha">
+            <span class="icone-olho-aberto"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/></svg></span>
+            <span class="icone-olho-fechado" hidden><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M3 3l18 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M10.6 5.2A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.6 4.6M6.6 6.6C4 8.3 2 12 2 12s3.6 7 10 7c1.4 0 2.6-.3 3.7-.8M9.5 9.5a3 3 0 0 0 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </button>
+        </div>
+        <div class="login-linha-opcoes">
+          <label class="login-lembrar"><input type="checkbox" id="chk-lembrar"> Lembrar meu usuário</label>
+          <button type="button" class="login-esqueci" id="btn-esqueci-senha">Esqueci minha senha</button>
+        </div>
+        <div class="login-msg-esqueci" id="msg-esqueci-senha" hidden>Redefinir senha é feito pelo administrador do sistema -- peça pra ele trocar sua senha em Usuários.</div>
+        <button type="submit" class="login-btn-entrar" id="btn-login">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M10 17l5-5-5-5M4 12h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 21h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Entrar
+        </button>
+      </form>
+      <div class="login-divisor">ou</div>
+      <div class="login-seguro">
+        <span class="seguro-icone"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3l8 3v6c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V6l8-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <div><b>Sistema seguro</b><span>Seus dados estão protegidos e com total confidencialidade.</span></div>
+      </div>
+      <div class="login-footer">Faturas Med © <span id="login-ano"></span>. Todos os direitos reservados.</div>
+    </div>
+  </div>
+  <div class="login-split-right">
+    <div class="login-tagline-top">Mais controle. Mais agilidade. Mais resultados.</div>
+    <div class="login-hero">
+      <h2>Seu faturamento médico <span class="destaque">mais eficiente.</span></h2>
+      <p>Organize, acompanhe e tenha total controle sobre os protocolos enviados a cada convênio, prestador e tipo, em um só lugar.</p>
+      <div class="login-features">
+        <div class="login-feature">
+          <span class="feature-icone azul"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 13h6M9 17h6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+          <div><b>Controle de faturamento</b><span>Pendente, enviado e faturado, tudo num só lugar</span></div>
+        </div>
+        <div class="login-feature">
+          <span class="feature-icone verde"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3l8 3v6c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V6l8-3Z" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <div><b>Prazos de anexo</b><span>Alerta antes de vencer os 12 dias</span></div>
+        </div>
+        <div class="login-feature">
+          <span class="feature-icone roxo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 17l6-6 4 4 8-8" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 6h6v6" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <div><b>Vínculos por tipo</b><span>Cada convênio, prestador e tipo com sua regra</span></div>
+        </div>
+      </div>
+      <div class="login-tagline-script">Juntos por um faturamento mais inteligente!</div>
+    </div>
+    <div class="login-bars-decor" aria-hidden="true">
+      <span style="height:26px;"></span><span style="height:42px;"></span><span style="height:34px;"></span><span style="height:58px;"></span><span style="height:46px;"></span><span style="height:68px;"></span>
+    </div>
   </div>
 </div>
 
