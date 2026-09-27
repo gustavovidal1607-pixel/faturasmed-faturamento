@@ -1,6 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 34" width="34" height="34">
-  <rect x="0" y="0" width="34" height="34" rx="8" fill="#FFFFFF"/>
-  <path d="M4 27V19M11 27V14M18 27V10M25 27V6" stroke="#1450C4" stroke-width="3.6" stroke-linecap="round"/>
-  <path d="M4 15L12 8L18 12L28 3" stroke="#0FB88A" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M21 3H28V10" stroke="#0FB88A" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" rx="8" fill="url(#logo-grad)"/>
+  <path d="M8 21v-4M14 21v-7M20 21v-10M25 21V9" stroke="white" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M8 12l5-4 4 3 8-6" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="logo-grad" x1="0" y1="0" x2="32" y2="32">
+      <stop stop-color="#22d3c9"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
 </svg>
