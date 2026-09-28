@@ -225,12 +225,6 @@ function iniciarApp(usuario){
   abrirAba('painel');
 }
 
-(function(){
-  const token = localStorage.getItem('token');
-  const usuarioSalvo = localStorage.getItem('usuario');
-  if (token && usuarioSalvo) iniciarApp(JSON.parse(usuarioSalvo));
-})();
-
 // ---------------- Painel (admin) ----------------
 
 const PAINEL_ABAS = [
@@ -1330,3 +1324,18 @@ async function renderUsuarios(){
     renderUsuarios();
   }));
 }
+
+// ---------------- Início automático (sessão já salva) ----------------
+
+// Tem que ser a ÚLTIMA coisa do arquivo: iniciarApp() -> abrirAba('painel')
+// -> renderPainel() já mexe em variáveis (painelFiltro etc.) declaradas
+// com let mais abaixo no arquivo. Rodar isso antes de chegar na
+// declaração delas quebra com "Cannot access '...' before initialization"
+// -- só não aparecia pra quem sempre logava pelo formulário (aí só roda
+// depois que o arquivo inteiro já carregou), mas travava direto em quem
+// já estava com sessão salva (localStorage) ao abrir/recarregar a página.
+(function(){
+  const token = localStorage.getItem('token');
+  const usuarioSalvo = localStorage.getItem('usuario');
+  if (token && usuarioSalvo) iniciarApp(JSON.parse(usuarioSalvo));
+})();
