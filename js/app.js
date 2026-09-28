@@ -3,7 +3,7 @@ const API = '/api';
 const TEMPO_LIMITE_MS = 15000;
 
 async function api(path, opts = {}){
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   if (token) headers['Authorization'] = 'Bearer ' + token;
   const controlador = new AbortController();
@@ -19,8 +19,8 @@ async function api(path, opts = {}){
   }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401){
-    localStorage.removeItem('token');
-    localStorage.removeItem('usuario');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('usuario');
     location.reload();
     throw new Error('Sessão expirada.');
   }
@@ -79,7 +79,7 @@ function formatarCompetencia(comp){
 const ROTULOS_STATUS = { pendente: 'Pendente', enviado_falta_anexo: 'Enviado - falta anexo', faturado: 'Faturado' };
 function rotuloStatus(status){ return ROTULOS_STATUS[status] || status; }
 function usuarioAtual(){
-  return JSON.parse(localStorage.getItem('usuario'));
+  return JSON.parse(sessionStorage.getItem('usuario'));
 }
 
 // ---------------- Login ----------------
@@ -127,16 +127,16 @@ async function fazerLogin(ev){
     const data = await api('/auth', { method: 'POST', body: JSON.stringify({ login, senha }) });
     if (lembrar) localStorage.setItem(CHAVE_LOGIN_LEMBRADO, login);
     else localStorage.removeItem(CHAVE_LOGIN_LEMBRADO);
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('usuario', JSON.stringify(data.usuario));
+    sessionStorage.setItem('token', data.token);
+    sessionStorage.setItem('usuario', JSON.stringify(data.usuario));
     iniciarApp(data.usuario);
   }catch(err){ erroEl.textContent = err.message; erroEl.hidden = false; }
 }
 
 document.getElementById('btn-sair').addEventListener('click', async () => {
   try{ await api('/auth', { method: 'DELETE' }); }catch{}
-  localStorage.removeItem('token');
-  localStorage.removeItem('usuario');
+  sessionStorage.removeItem('token');
+  sessionStorage.removeItem('usuario');
   location.reload();
 });
 
@@ -1333,9 +1333,14 @@ async function renderUsuarios(){
 // declaração delas quebra com "Cannot access '...' before initialization"
 // -- só não aparecia pra quem sempre logava pelo formulário (aí só roda
 // depois que o arquivo inteiro já carregou), mas travava direto em quem
-// já estava com sessão salva (localStorage) ao abrir/recarregar a página.
+// já estava com sessão salva (sessionStorage) ao abrir/recarregar a página.
+//
+// sessionStorage (não localStorage) de propósito: a sessão só continua
+// válida enquanto a aba/navegador ficar aberto. Fechou, tem que logar nas
+// próxima vez -- só o campo de usuário (CHAVE_LOGIN_LEMBRADO, acima) é
+// que continua lembrado entre uma sessão e outra.
 (function(){
-  const token = localStorage.getItem('token');
-  const usuarioSalvo = localStorage.getItem('usuario');
+  const token = sessionStorage.getItem('token');
+  const usuarioSalvo = sessionStorage.getItem('usuario');
   if (token && usuarioSalvo) iniciarApp(JSON.parse(usuarioSalvo));
 })();
